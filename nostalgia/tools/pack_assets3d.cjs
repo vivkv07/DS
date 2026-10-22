@@ -15,7 +15,8 @@
  *                                           assets3d/ too; size report, budgets enforced; nothing is written when
  *                                           a budget fails
  *   node tools/pack_assets3d.cjs --repack hero_cycle   ship mode, rebuilding only these core ids from assets3d/ (the rest
- *                                           of the frozen pack is kept byte for byte)
+ *                                           of the frozen pack is kept byte for byte); a core id new to ship.json is
+ *                                           added to the pack this way too
  *   node tools/pack_assets3d.cjs --check    exit 1 if src/assets3d_index.js is stale or the pack's ids differ
  *                                           from ship.core (with --repack-core: also if the pack is stale)
  *   node tools/pack_assets3d.cjs --lazy-only  ship mode, but only (re)write dist/lazy3d/ (tools/build.mjs)
@@ -347,7 +348,9 @@ function main() {
     const cur = readPack();
     if (!cur) { console.error('pack: ' + path.relative(ROOT, OUT) + ' is missing or unreadable (run with --repack-core)'); process.exit(1); }
     const have = Object.keys(cur.glb).sort(), want = coreIds.slice().sort();
-    if (have.join() !== want.join()) {
+    // (a core id new to ship.json joins the frozen pack when --repack names it)
+    const adding = want.filter((i) => !have.includes(i) && REPACK_IDS && REPACK_IDS.includes(i));
+    if (have.concat(adding).sort().join() !== want.join()) {
       console.error('pack: the core pack ids differ from ship.json core (pack only: ' + have.filter((i) => !want.includes(i)).join(', ') + '; ship only: ' + want.filter((i) => !have.includes(i)).join(', ') + '); run with --repack-core');
       process.exit(1);
     }

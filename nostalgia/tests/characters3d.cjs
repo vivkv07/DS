@@ -147,7 +147,9 @@ async function main(browser) {
   await to3D(page, 'tps');
   const st = await waitPeople(page);
   check(st.m3d.state === 'ready' && st.ppl.ready, 'models3d + people ready (' + st.m3d.state + ', ' + st.ppl.models + ' character models: ' + st.models.join(', ') + ')');
-  const ALL = st.models;
+  // the walking archetypes this page can load: in the pack (lazy ones are not fetchable from file://; PACK= packs them
+  // all), not a vehicle's rider model (adult_man: no look picks it, its clips are its own)
+  const ALL = await page.evaluate((ids) => ids.filter((id) => { const A = N.ASSETS3D, m = A && A.manifest[id]; return !!(m && A.glb[id]) && (m.meta || {}).role !== 'rider'; }), st.models);
   const lazyOk = await page.evaluate(async (ids) => { const t0 = performance.now(); const got = await CH.parse(ids); return { got, ms: Math.round(performance.now() - t0) }; }, ALL);
   check(lazyOk.got.length === ALL.length, 'every character model parses with its rig clip library (' + lazyOk.got.length + '/' + ALL.length + ', lazy ones in ' + lazyOk.ms + ' ms)');
   const libs = await page.evaluate((ids) => ids.map((id) => { const md = N.models3d.debug.S.models.get(id); return [id, md.lib || '-', md.clips.size]; }), ALL);
@@ -239,7 +241,7 @@ async function main(browser) {
     });
     check(L.n >= ALL.length, 'line-up of ' + L.n + ' people (' + L.names.join(', ') + ')');
     check(L.worst < 0.12, 'standing in the line-up: every sole within 0.12 u of the ground (worst ' + L.worst.toFixed(3) + ')');
-    const cam = (h, dist, fov, x) => page.evaluate((a) => N.view3dActors.debug.camera([a.x, a.h, a.y + a.dist], [a.x, a.h * 0.55, a.y], a.fov), { x: x == null ? L.x0 + L.span / 2 : x, y: L.y, h, dist, fov });
+    const cam = (h, dist, fov, x) => page.evaluate((a) => N.view3dActors.debug.camera([a.x, a.g + a.h, a.y + a.dist], [a.x, a.g + a.h * 0.55, a.y], a.fov), { x: x == null ? L.x0 + L.span / 2 : x, y: L.y, g: L.g, h, dist, fov }); // (above the ground there: the terrain)
     if (SHOTS) {
       await cam(9, Math.max(60, L.span * 0.95), 50);
       await shot(page, 'characters3d_lineup_day.png');
@@ -279,7 +281,7 @@ async function main(browser) {
         N.time.scale = 0.3;
         N.input.hold('up', true); if (run) N.input.hold('run', true);
         await CH.raf(14);
-        const follow = () => { const a = p.facing || 0; N.view3dActors.debug.camera([p.x - Math.sin(a) * 24, 6, p.y + Math.cos(a) * 24], [p.x, 3.4, p.y], 34); };
+        const follow = () => { const a = p.facing || 0, ge = N.view3d.elevation(p); N.view3dActors.debug.camera([p.x - Math.sin(a) * 24, ge + 6, p.y + Math.cos(a) * 24], [p.x, ge + 3.4, p.y], 34); };
         N.time.scale = 0.25;
         const S = CH.strip(8, 150, 210);
         let next = null;
@@ -287,7 +289,7 @@ async function main(browser) {
           follow(); await CH.raf(1);
           const P = CH.person(p); if (!P) continue;
           if (next == null) next = N.time.now;
-          if (N.time.now >= next) { CH.cell(S, p.x, 3.6, p.y, (S.n * 0.1).toFixed(1) + 's ' + P.clip); next += 0.1; }
+          if (N.time.now >= next) { CH.cell(S, p.x, N.view3d.elevation(p) + 3.6, p.y, (S.n * 0.1).toFixed(1) + 's ' + P.clip); next += 0.1; }
         }
         N.view3d.setQuality({ pixelRatio: 0.3 });
         N.time.scale = 0.06;
@@ -325,11 +327,11 @@ async function main(browser) {
         const P = CH.make(a.id);
         const dir = 0; let x = p.x - 40, y = p.y + 12;
         P.object.rotation.y = -dir;
-        const cam = () => N.view3dActors.debug.camera([x, 6, y + 26], [x, 3.6, y], 34);
+        const cam = () => N.view3dActors.debug.camera([x, gnd + 6, y + 26], [x, gnd + 3.6, y], 34);
         const step = (dt) => { const d = a.v * dt; x += d; P.object.position.set(x, gnd, y); P.update(dt, d, a.v); };
         for (let i = 0; i < 20; i++) step(1 / 30);
         const S = CH.strip(8, 150, 210);
-        for (let i = 0; i < 8; i++) { step(0.1); cam(); await CH.raf(2); CH.cell(S, x, 4, y, (i * 0.1).toFixed(1) + 's ' + P.clip); }
+        for (let i = 0; i < 8; i++) { step(0.1); cam(); await CH.raf(2); CH.cell(S, x, gnd + 4, y, (i * 0.1).toFixed(1) + 's ' + P.clip); }
         const F = [];
         for (let i = 0; i < 160; i++) { step(1 / 240); F.push({ x, y, g: gnd, s: P.soles() }); }
         const clip = P.clip;
@@ -362,7 +364,7 @@ async function main(browser) {
     check(S1.sit.clip === 'sit' && S1.sit.seat, 'sitting: the sit clip on a bench drawn under him (' + JSON.stringify(S1.sit) + ')');
     check(S1.clap === 'clap' && S1.kite === 'kite_fly' && /^idle/.test(S1.back), 'scripted clips: clap (Golconda), kite_fly, then back to idle (' + [S1.clap, S1.kite, S1.back].join(' -> ') + ')');
     if (SHOTS) {
-      await page.evaluate(() => { const p = N.player; p.sitting = true; p.bench = true; N.view3dActors.debug.camera([p.x + 14, 6, p.y + 14], [p.x, 3, p.y], 34); });
+      await page.evaluate(() => { const p = N.player; p.sitting = true; p.bench = true; const ge = N.view3d.elevation(p); N.view3dActors.debug.camera([p.x + 14, ge + 6, p.y + 14], [p.x, ge + 3, p.y], 34); });
       await shot(page, 'characters3d_sit.png');
       await page.evaluate(() => { const p = N.player; p.sitting = false; p.bench = false; p.clip3d = 'kite_fly'; });
       await shot(page, 'characters3d_kite.png');

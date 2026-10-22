@@ -53,6 +53,14 @@ nostalgia/
   src/audio.js      WebAudio SFX, music sequencer, radio -> N.audio
   src/render.js     canvas, pixel scaling, camera, projection, layer queue, chunk cache, draw helpers -> N.render, N.draw
   src/worlddata.js  pure data: the map (districts, roads, water, parks, blocks, landmarks, places) -> N.WORLD_DATA
+  src/terrain_data.js GENERATED (tools/geo/build_terrain.cjs, from SRTM terrarium tiles): N.TERRAIN_DATA, real
+                    ground heights every 75 u (lakes flat, the Musi and nalas as channels, bridges levelled)
+  src/terrain.js    (after worlddata.js) the ground's rise and fall: heightAt / slopeAt / gradeAt (3D units above
+                    Hussain Sagar's level), accelAlong (gravity along a heading, per vehicle class) and walkMul
+                    (on foot) for vehicles.js / entities.js, the 2D hillshade baked into the ground chunks;
+                    view3d.js / view3d_ground.js / view3d_actors.js / wires.js put the 3D city on it (H.terrainAt,
+                    H.terrainBase; chunk structures via sitOnTerrain unless `terrSelf`) -> N.terrain
+                    (tests/terrain.cjs)
   src/world.js      builds collision/surface grid, spatial index, road graph; draws ground + generic buildings -> N.world
   src/world_extras.js (map maker) railways + level crossings: wraps setGroundPainter / renderMap -> N.worldExtras
   src/landmarks.js  custom pseudo-3D drawing for named landmarks -> N.landmarks
@@ -62,6 +70,11 @@ nostalgia/
                     'placesArt' (order 43), wraps setGroundPainter -> N.placesArt {drawProp, queueProp, fx}
   src/entities.js   entity registry, spatial hash, Actor base, people drawing, Player on foot -> N.entities, N.player
   src/vehicles.js   vehicle types, physics, drawing, enter/exit -> N.vehicles
+  src/decker.js     (after vehicles.js) the double-decker's top deck: boarding a `topDeck` bus (decker_bus, kept round
+                    Charminar / Koti / Necklace Road by traffic.js spawnAt / routeBias) makes the player a 'deck'
+                    passenger who walks about the moving bus in its own frame, sways when it brakes, sits in any
+                    free seat or stands, and goes down the stairs to get off; passengers come and go at stops;
+                    system 'decker' (order 31, after vehicles) -> N.decker (tests/decker.cjs)
   src/traffic.js    ambient traffic, pedestrians, cows, dogs, pigeons -> N.traffic
   src/npcs.js       named story NPCs, portraits, talk prompts -> N.npcs
   src/wanted.js     the Chappal Meter (wanted level) + pursuers -> N.wanted
@@ -116,6 +129,13 @@ nostalgia/
                     (canvas, 2D cells; one shared 3D texture, one mesh per chunk); system 'hoardings'
                     (order 43.6: 2D shadows + night floodlights), 3D layer 'hoardings3d' (floodlit at night)
                     -> N.hoardings (tests/hoardings.cjs)
+  src/hills.js      (after hoardings.js) Banjara Hills and Jubilee Hills, 2003: on 'world:built' the districts'
+                    houses become rich bungalows (portico, gold rails, granite gate pillars with globe lamps, an
+                    open black-and-gold gate, bougainvillea, palms, garden lamps, a car in the drive while the
+                    player is near: lux_sedan / suv / Ambassador) and the houses on Road No. 1-12 / 36 / Film
+                    Nagar Road coffee bars, jewellers, boutiques, pubs, parlours (invented boards, glass fronts,
+                    canopies, neon); one terrSelf `t:'custom'` structure each (2D draw + build3d); system 'hills'
+                    (order 43.8: 2D night lights, the parked cars) -> N.hills (tests/hills.cjs)
   src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
                     every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
@@ -679,7 +699,11 @@ Implementation notes (entities.js, binding):
 - `N.people.draw(ctx, look, {phase, speed 0..1, run})` draws ~1.35x the collision size
   (`N.people.SCALE`) so people read at the internal resolution. Extra look fields: `stripes,
   saree, border, blouse, lungi, dupatta, girl, bag, tie, cap: 'police'|'topi'|'cricket',
-  capColor`. `N.people.randomLook(rng, kind?)`.
+  capColor`. `N.people.randomLook(rng, kind?)`. The 2003 wardrobe, `N.people.dress(look, role, rng)` (called by
+  randomLook and traffic.js makeLook; the named cast keep their own looks): `moustache, checks (line colour),
+  sleeves: 'long', kurta, safari, dhoti (+ lungi white, border), gajra, sweater (colour), hat: 'monkey'`
+  (sweaters and monkey caps on winter mornings / evenings); drawn in 2D (drawPerson) and 3D (view3d_actors
+  lookSpec; the checked shirt is pattern bit 22). tests/people2003.cjs.
 - `N.player` extras: `look`, `anim`, `exhausted`, `god`, `teleport(x, y)` (clamped into the
   map; a blocked spot falls back to the nearest free cell, else the spawn), `reset()`,
   `serialize()/deserialize()` (junk fields keep the current values; never NaN). Walk 45 / run 80 with acceleration, smooth turning, wall

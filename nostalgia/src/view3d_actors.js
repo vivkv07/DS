@@ -586,12 +586,12 @@
     SHORTS: 61, FACE: 62, HAIR_FRINGE: 63, SLIM: 64,
   };
   // pattern / logic bits in iFlags.w (bit index)
-  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20, BIT_NOBODY = 21; // first person: ARMS = only the arms drawn, NOBODY = no torso / neck (the eye sits behind them)
+  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20, BIT_NOBODY = 21, BIT_TCHECKS = 22; // first person: ARMS = only the arms drawn, NOBODY = no torso / neck (the eye sits behind them)
 
   function personVertexHeader(depth) {
     return [
       'attribute vec3 aSP;', 'attribute vec4 iJ0;', 'attribute vec4 iJ1;', 'attribute vec4 iJ2;', 'attribute vec4 iJ3;', 'attribute vec4 iFlags;',
-      depth ? '' : 'attribute vec4 iColA;\nattribute vec4 iColB;\nvarying vec3 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;',
+      depth ? '' : 'attribute vec4 iColA;\nattribute vec4 iColB;\nvarying vec4 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;',
       GLSL_UNPACK, GLSL_ROT,
       'float pFeat(float f){ if (f < 0.5) return 1.0; float i = f - 1.0; float w = floor(i / 20.0 + 0.0001); float b = i - w * 20.0;',
       '  float m = w < 0.5 ? iFlags.x : (w < 1.5 ? iFlags.y : (w < 2.5 ? iFlags.z : iFlags.w)); return aBit(m, b); }',
@@ -641,6 +641,7 @@
     ].join('\n') + '\n';
   }
   function personCompile(shader) {
+    if (H.lamps) H.lamps.apply(shader); // lit by the street lamps round him at night
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\n' + personVertexHeader(false))
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvec3 pPos = vec3(position);\npAnim(pPos, objectNormal);')
@@ -651,14 +652,16 @@
         '  if (sl > 0.5) { float c = sl < 1.5 ? iColA.x : (sl < 2.5 ? iColA.y : (sl < 3.5 ? iColA.z : (sl < 4.5 ? iColA.w : (sl < 5.5 ? iColB.x : (sl < 6.5 ? iColB.y : (sl < 7.5 ? iColB.z : iColB.w))))));',
         '    vColor = aUnpack(c) * vColor; }',
         '  vAcc = aUnpack(iColB.x);',
-        '  vPat = vec3(aBit(iFlags.w, ' + BIT_STRIPES + '.0), aBit(iFlags.w, ' + BIT_BORDER + '.0), aBit(iFlags.w, ' + BIT_CHECKS + '.0));',
+        '  vPat = vec4(aBit(iFlags.w, ' + BIT_STRIPES + '.0), aBit(iFlags.w, ' + BIT_BORDER + '.0), aBit(iFlags.w, ' + BIT_CHECKS + '.0), aBit(iFlags.w, ' + BIT_TCHECKS + '.0));',
         '  vLP = position; }',
       ].join('\n'));
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;')
+      .replace('#include <common>', '#include <common>\nvarying vec4 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;')
       .replace('#include <color_fragment>', [
         '#include <color_fragment>',
         'if (vSlot > 2.5 && vSlot < 3.5 && vPat.x > 0.5) { float st = step(0.55, fract(vLP.y * 1.75)); diffuseColor.rgb = mix(diffuseColor.rgb, vAcc, st * 0.9); }',
+        // a checked shirt: lines of the accent colour both ways
+        'if (vSlot > 2.5 && vSlot < 3.5 && vPat.w > 0.5) { float g = max(step(fract((vLP.x + vLP.z) * 1.6), 0.16), step(fract(vLP.y * 1.6), 0.16)); diffuseColor.rgb = mix(diffuseColor.rgb, vAcc, g * 0.7); }',
         'if (vSlot > 3.5 && vSlot < 4.5) {',
         '  if (vPat.y > 0.5 && (vLP.y < 0.92 || (vLP.y > 4.95 && vLP.y < 5.12))) diffuseColor.rgb = vAcc;',
         '  if (vPat.z > 0.5) { float g = max(step(fract((vLP.x + vLP.z) * 1.25), 0.12), step(fract(vLP.y * 1.25), 0.12)); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.85), g * 0.45); }',
@@ -913,11 +916,16 @@
         on(F.LEG_PANTS);
         if (r > 0.42) on(F.MOUSTACHE);
     }
+    if (L.dhoti && !wrap) { wrap = true; bottom = L.lungi || '#f4f2ea'; bits.delete(F.LEG_PANTS); } // the old man's white dhoti
     if (wrap) on(F.WRAP);
     if (!wrap && !bits.has(F.LEG_PANTS) && !bits.has(F.LEG_BARE)) on(F.LEG_PANTS);
     if (bits.has(F.TUNIC) && !bits.has(F.LEG_PANTS)) on(F.LEG_PANTS);
     // uniform cues
     if (L.cap === 'police' || L.pants === '#a89060' && L.cap === 'police') { on(F.CAP_POLICE); on(F.BELT); on(F.SHOES); }
+    // the 2003 wardrobe (entities.js dress): full sleeves, a sweater over it all, a man's kurta, a checked shirt
+    if (L.sleeves === 'long' && sleeves === 'short') sleeves = 'long';
+    if (L.sweater && kind !== 'burqa') { top = L.sweater; sleeves = 'long'; }
+    if (L.kurta && !wrap) on(F.TUNIC);
     // sleeves
     if (L.body) { top = L.body; sleeves = 'none'; }
     if (sleeves === 'short') { on(F.SLEEVES); on(F.SLEEVE_SHORT); } else if (sleeves === 'long') { on(F.SLEEVES); on(F.SLEEVE_LONG); } else on(F.NO_SLEEVE);
@@ -934,6 +942,7 @@
       case 'pith': on(F.CAP_PITH); capOn = true; hat = L.hatColor || '#e8dcc0'; break;
       case 'backcap': on(F.CAP_BACK); capOn = true; hat = L.hatColor || '#c03030'; break;
       case 'hood': on(F.HOOD); capOn = true; hat = L.hatColor || '#f2c230'; hairStyle = 'none'; break;
+      case 'monkey': on(F.HOOD); capOn = true; hat = L.hatColor || '#7a1f2b'; hairStyle = 'none'; break; // the winter monkey cap
       default: break;
     }
     if (bits.has(F.CAP_POLICE)) capOn = true;
@@ -953,6 +962,7 @@
     if (L.puff && !capOn) on(F.PUFF);
     if (L.cowlick && !capOn) on(F.COWLICK);
     if (capOn) { bits.delete(F.HAIR_FRINGE); bits.delete(F.PUFF); }
+    if (L.gajra && (bits.has(F.PLAIT_ONE) || bits.has(F.PLAITS_TWO) || bits.has(F.BUN))) on(F.JASMINE);
     // face + body extras
     if (L.specs) on(F.SPECS);
     if (L.beard) { on(F.BEARD); extra = L.beard; if (L.longBeard) on(F.LONGBEARD); bits.delete(F.MOUSTACHE); }
@@ -967,7 +977,9 @@
     if (L.walkman) { on(F.WALKMAN); }
     if (L.camera) on(F.CAMERA);
     if (L.neem) on(F.P_NEEM);
-    if (lungi) patt.checks = true;
+    if (lungi && !L.dhoti) patt.checks = true;
+    if (L.dhoti) { patt.border = true; accent = L.border || '#c9a227'; } // the white dhoti's border
+    if (L.checks && !L.sweater && !patt.stripes && !L.tie) { patt.tchecks = true; accent = L.checks; }
     if (kind === 'student' || kind === 'police' || kind === 'man' && (L.lanyardDot || L.shoes)) on(F.SHOES);
     // props
     const prop = L.prop;
@@ -982,6 +994,7 @@
     if (patt.stripes) f[3] += Math.pow(2, BIT_STRIPES);
     if (patt.border) f[3] += Math.pow(2, BIT_BORDER);
     if (patt.checks) f[3] += Math.pow(2, BIT_CHECKS);
+    if (patt.tchecks) f[3] += Math.pow(2, BIT_TCHECKS);
     if (kid) f[3] += Math.pow(2, BIT_KID);
     const size = (L.size || 1) * (kid ? 0.78 : kind === 'uncle' ? 1.02 : 1);
     // seated / riding: a wrap (lungi, saree, burqa) drapes over the legs instead of hanging as a cone
@@ -1272,6 +1285,9 @@
     return FRUST;
   }
   /** is a sphere at world (x, h, y) with radius r worth drawing? (frustum, or close to the player for shadows) */
+  // [terrain] the ground under (x, y) (terrain.js through view3d.js): things placed at a height above the ground
+  // (vehicles, props, parked dressing) stand on it; H.elev(e) already includes it for entities
+  const TH = (x, y) => (H.terrainAt ? H.terrainAt(x, y) : 0);
   function visible(x, h, y, r) {
     if (DBG.cam) return true;
     const f = frustum();
@@ -1333,6 +1349,7 @@
   const DARK = '#1c1a1c', BLACK = '#121214', SEAT = '#1e1a1a', CHROMEC = '#c9cdd2', GLASSC = '#24303a', CREAM = '#efe6cf', RUBBER = '#2a2828';
   function vehicleCompile(shader) {
     shader.uniforms.uNight = H.uniforms.uNight; shader.uniforms.uHor = H.uniforms.uHor;
+    if (H.lamps) H.lamps.apply(shader);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aSP;\nattribute vec3 aPiv;\nattribute vec4 iVA;\nattribute vec4 iVB;\nuniform float uNight;\nuniform vec3 uHor;\nvarying vec3 vEm;\n' + GLSL_UNPACK + GLSL_ROT)
       .replace('#include <beginnormal_vertex>', [
@@ -1832,6 +1849,23 @@
     grille: { y0: 3.3, y1: 4.0, hw: 2.4 }, lampR: 0.75, lampZ: 4.1, lampY: 3.7, tailY: 3.9, doors: [-1.2], hoodY: 5.1,
     seatX: -1.6, seatY: 4.3, archTop: 4.7, dash: { x: 5.2, y: 6.0 },
   }));
+  // Banjara / Jubilee drives (hills.js): a "foreign car" (long, low, curvy, chrome) and an SUV (tall, boxy)
+  defModel('luxsedan', (b) => mkCar(b, {
+    L: 34, W: 13.5, bev: 0.8, curvy: true,
+    prof: [[-17.0, 2.2], [-17.2, 4.3], [-16.2, 5.3], [-12.6, 5.65], [6.4, 5.55], [12.6, 5.05], [16.6, 4.35], [17.1, 3.0], [16.6, 1.9], [-15.8, 1.6]],
+    gh: { x0: -11.6, x1: 6.2, rx0: -8.2, rx1: 1.6, y0: 5.6, y1: 9.1, w0: 6.2, w1: 5.2, bp: 0.46 },
+    wheels: [{ x: -11.0, r: 2.3, w: 1.6, inset: 1.4 }, { x: 10.8, r: 2.3, w: 1.6, inset: 1.4, front: true }],
+    grille: { y0: 3.0, y1: 4.4, hw: 2.4 }, chromeBump: true, lampR: 0.75, lampZ: 4.7, lampY: 3.9, tailY: 4.0, doors: [-3.2, 4.6], ornament: true, hoodY: 5.4,
+    seatX: -2.2, seatY: 4.6, archTop: 5.0, dash: { x: 5.2, y: 6.2 },
+  }));
+  defModel('suv', (b) => mkCar(b, {
+    L: 30, W: 14.5, bev: 0.6,
+    prof: [[-15.0, 2.6], [-15.1, 6.8], [-14.6, 7.2], [8.4, 7.2], [13.4, 6.6], [15.0, 5.6], [15.1, 3.0], [14.4, 2.2], [-14.4, 2.2]],
+    gh: { x0: -14.0, x1: 8.4, rx0: -13.8, rx1: 5.4, y0: 7.2, y1: 11.4, w0: 6.8, w1: 6.4, bp: 0.42 },
+    wheels: [{ x: -9.6, r: 2.8, w: 1.9, inset: 1.5 }, { x: 9.6, r: 2.8, w: 1.9, inset: 1.5, front: true }],
+    grille: { y0: 3.4, y1: 5.6, hw: 3.4 }, lampR: 0.9, lampZ: 5.0, lampY: 5.0, tailY: 5.4, doors: [-4.8, 3.2], hoodY: 6.8,
+    seatX: -2.6, seatY: 6.0, archTop: 6.4, dash: { x: 7.2, y: 8.0 },
+  }));
   defModel('padmini', (b) => mkCar(b, {
     L: 26, W: 12, bev: 0.85,
     prof: [[-13.0, 2.0], [-13.15, 4.4], [-12.4, 5.25], [-8.4, 5.5], [5.3, 5.5], [10.6, 5.12], [12.8, 4.45], [13.15, 2.8], [12.7, 1.8], [-12.4, 1.65]],
@@ -1878,6 +1912,110 @@
     };
   }
   defModel('bus', (b) => mkBus(b, false));
+  /* the double-decker (APSRTC's last ones, 2003): the city bus two decks tall. A half cab (the driver's windscreen on
+   * the right, the radiator on the left), the cream band with A.P.S.R.T.C. between the decks, two upper front windows
+   * over the route board, the open rear platform on the kerb side with its pole. The lower deck is a closed body like
+   * the city bus; the upper deck is framework round its windows (double-sided) about a furnished top deck (floor,
+   * the seat rows, the front rail, the stairwell: decker.js's layout), so its passengers show through the glass, and
+   * with the player up there in third person the roof comes off (bus_decker_open) to look down on him walking about.
+   * `upper` is the top deck's seats (decker.js SEATS: the same people in the same seats as the 2D cutaway). */
+  const DD_FALLBACK = { floor: 15.4, seatY: 17.8, top: 25.4, hw: 9, aisle: 2.0, front: 28.2, rows: [25.6, 20.2, 14.8, 9.4, 4.0, -1.4, -6.8, -12.2, -17.6], stairs: { x0: -28.4, x1: -20.0, z0: -8.6, z1: -0.8 } };
+  const DDL = () => (N.decker && N.decker.LAYOUT) || DD_FALLBACK;
+  const DD_WIN = [17.4, 23.5]; // the upper side windows (y)
+  /** the top deck's furniture: floor, panels under / over the windows, the seat rows, the front rail, the stairwell
+   *  (o.pillars: the pillars between the windows too, for the first-person interior that has no body round it) */
+  function deckFurniture(b, o) {
+    const Y = DDL(), hw = 9, fl = Y.floor, x0 = -30.9, x1 = 31.1, top = Y.top - 0.6, PANEL = '#c9b48a', PILLAR = '#8a7a5a', S = Y.stairs;
+    FX(b, '#4a3a30').box(x0, fl, -hw + 0.2, x1, fl + 0.1, hw - 0.2);
+    FX(b, '#3a2c24'); for (let x = x0 + 1; x < x1; x += 2.2) b.box(x, fl + 0.1, -hw + 0.2, x + 0.12, fl + 0.13, hw - 0.2);
+    for (const sd of [-1, 1]) {
+      const za = sd > 0 ? hw - 0.6 : -hw + 0.2, zb = sd > 0 ? hw - 0.2 : -hw + 0.6;
+      FX(b, PANEL).box(x0, fl, za, x1, DD_WIN[0], zb).box(x0, DD_WIN[1], za, x1, top, zb);
+      if (o.pillars) { FX(b, PILLAR); for (let k = 0; k <= 9; k++) { const x = -28.5 + k * 6.0 - 0.6; b.box(x, DD_WIN[0], za, x + 0.6, DD_WIN[1], zb); } }
+    }
+    FX(b, PANEL).box(x1 - 0.4, fl, -hw + 0.2, x1, DD_WIN[0], hw - 0.2).box(x0, fl, -hw + 0.2, x0 + 0.4, 18.0, hw - 0.2);
+    // the front rail (hands and knees on it at the front window)
+    const rx = Y.front + 1.3, ry = fl + 3.6;
+    CH(b).tube([rx, ry, -hw + 0.6], [rx, ry, hw - 0.6], 0.12, 6);
+    for (const z of [-hw + 0.7, hw - 0.7]) CH(b).tube([rx, ry, z], [x1 - 0.4, ry - 1.2, z], 0.1, 4);
+    // the stairwell at the back on the left, railed off on its aisle and front sides
+    FX(b, '#1a1410').box(S.x0, fl + 0.11, S.z0 + 0.6, S.x1, fl + 0.15, S.z1);
+    CH(b);
+    b.tube([S.x0, fl + 3.4, S.z1], [S.x1, fl + 3.4, S.z1], 0.1, 4).tube([S.x1, fl + 3.4, S.z1], [S.x1, fl + 3.4, S.z0 + 0.8], 0.1, 4);
+    for (const q of [[S.x1, S.z1], [S.x0 + 0.4, S.z1], [S.x1, S.z0 + 0.8]]) b.tube([q[0], fl, q[1]], [q[0], fl + 3.4, q[1]], 0.1, 4);
+    // the seats: a moquette cushion and back with a chrome grab rail, two each side of the aisle, every row
+    for (const x of Y.rows) for (const sd of [-1, 1]) {
+      const zA = sd * Y.aisle, zB = sd * (hw - 0.6), zlo = Math.min(zA, zB), zhi = Math.max(zA, zB);
+      FX(b, '#2f5e72').box(x - 1.8, Y.seatY - 0.6, zlo, x + 1.6, Y.seatY - 0.05, zhi);
+      FX(b, '#21434f').box(x - 2.4, Y.seatY - 0.6, zlo, x - 1.7, Y.seatY + 4.0, zhi);
+      CH(b).tube([x - 2.1, Y.seatY + 4.1, zlo + 0.2], [x - 2.1, Y.seatY + 4.1, zhi - 0.2], 0.09, 4);
+      FX(b, '#3a3a3e').box(x - 1.2, fl, (zA + zB) / 2 - 0.2, x + 1.0, Y.seatY - 0.6, (zA + zB) / 2 + 0.2);
+    }
+  }
+  function mkDecker(b, open) {
+    const L = 62, hw = 9, Y = DDL(), fl = Y.floor, top = Y.top, wt = top - 0.6, xF = 31.35, xB = -31.25;
+    b.part(0);
+    // the lower deck: a closed body
+    P1(b).sweep([[-31, 1.8], [31, 1.8], [xF, 3.0], [xF, fl], [xB, fl], [xB, 3.0]], hw, 0.7);
+    arches(b, [{ x: 22, r: 3.0 }, { x: -18, r: 3.0 }], hw, 6);
+    // the upper deck: framework round the windows (double-sided, so the deck shows through), a rim along the top
+    const vW = (y) => (y - fl) / (wt - fl), span = xF - xB;
+    P1(b);
+    for (const sd of [-1, 1]) {
+      const z = sd * hw, holes = [];
+      for (let k = 0; k < 9; k++) { const x0 = -28.5 + k * 6.0; holes.push([(x0 - xB) / span, (x0 + 5.4 - xB) / span, vW(DD_WIN[0]), vW(DD_WIN[1])]); }
+      frameFace(b, [xB, fl, z], [xF, fl, z], [xF, wt, z], [xB, wt, z], holes);
+    }
+    frameFace(b, [xF, fl, -hw], [xF, fl, hw], [xF, wt, hw], [xF, wt, -hw], [[0.8 / 18, 8.75 / 18, vW(17.4), vW(23.6)], [9.25 / 18, 17.2 / 18, vW(17.4), vW(23.6)]]);
+    frameFace(b, [xB, fl, -hw], [xB, fl, hw], [xB, wt, hw], [xB, wt, -hw], [[1.4 / 18, 16.6 / 18, vW(18.0), vW(23.2)]]);
+    P1(b, 0.92).box(xB, wt - 0.05, -hw - 0.05, xF, wt + 0.2, -hw + 0.35).box(xB, wt - 0.05, hw - 0.35, xF, wt + 0.2, hw + 0.05).box(xF - 0.4, wt - 0.05, -hw, xF + 0.05, wt + 0.2, hw).box(xB - 0.05, wt - 0.05, -hw, xB + 0.4, wt + 0.2, hw);
+    if (!open) { FX(b, '#d6d0c2').box(xB + 0.1, wt, -hw + 0.1, xF - 0.1, top, hw - 0.1).box(xB + 0.8, top, -8.2, xF - 0.8, top + 0.35, 8.2); }
+    FX(b, CREAM);
+    for (const sd of [-1, 1]) {
+      const z0 = sd > 0 ? hw - 0.05 : -hw - 0.1, z1 = sd > 0 ? hw + 0.1 : -hw + 0.05;
+      b.box(-30.8, 13.6, z0, 30.9, 16.6, z1).box(-30.8, 7.4, z0, 30.9, 7.9, z1).box(-30.8, 23.9, z0, 30.9, 24.3, z1);
+    }
+    b.box(31.25, 13.6, -hw + 0.4, 31.45, 16.6, hw - 0.4).box(-31.4, 13.6, -hw + 0.4, -31.2, 16.6, hw - 0.4);
+    GL(b);
+    for (const sd of [-1, 1]) for (let k = 0; k < 9; k++) {
+      const x0 = -28.5 + k * 6.0, x1 = x0 + 5.4, zz = sd * (hw + 0.06);
+      if (!(sd < 0 && x0 < -24)) b.quadO([x0, 8.3, zz], [x1, 8.3, zz], [x1, 13.2, zz], [x0, 13.2, zz], 0, 0, sd); // no window over the platform
+      // (roof off: the upper windows open, no glass: seen from above at a grazing angle it would whiten the deck)
+      if (!open) b.quadO([x0, DD_WIN[0], zz], [x1, DD_WIN[0], zz], [x1, DD_WIN[1], zz], [x0, DD_WIN[1], zz], 0, 0, sd);
+    }
+    b.quadO([31.4, 8.0, 0.4], [31.4, 8.0, 8.2], [31.4, 13.3, 8.2], [31.4, 13.3, 0.4], 1, 0, 0); // the cab's windscreen
+    b.quadO([31.4, 10.8, -8.2], [31.4, 10.8, -0.6], [31.4, 13.3, -0.6], [31.4, 13.3, -8.2], 1, 0, 0);
+    if (!open) {
+      b.quadO([31.42, 17.4, -8.2], [31.42, 17.4, -0.25], [31.42, 23.6, -0.25], [31.42, 23.6, -8.2], 1, 0, 0).quadO([31.42, 17.4, 0.25], [31.42, 17.4, 8.2], [31.42, 23.6, 8.2], [31.42, 23.6, 0.25], 1, 0, 0);
+      b.quadO([-31.32, 18.0, -7.6], [-31.32, 18.0, 7.6], [-31.32, 23.2, 7.6], [-31.32, 23.2, -7.6], -1, 0, 0);
+    }
+    b.quadO([-31.3, 9.0, 0.6], [-31.3, 9.0, 7.6], [-31.3, 13.0, 7.6], [-31.3, 13.0, 0.6], -1, 0, 0);
+    // the radiator (half cab: the engine sits left of the driver), the route board between the decks
+    CH(b).box(31.3, 3.6, -5.4, 31.62, 9.9, -0.8);
+    FX(b, '#1a1a1e'); for (let y = 4.1; y < 9.5; y += 0.7) b.box(31.6, y, -5.0, 31.7, y + 0.32, -1.2);
+    FX(b, '#141214').box(31.3, 14.0, -6.5, 31.5, 16.2, 6.5).box(-31.45, 14.0, -5.5, -31.25, 16.2, 5.5);
+    // the open rear platform (kerb side): the dark doorway, its pole, the step
+    FX(b, '#1c1a1e').box(-31.0, 2.0, -hw - 0.1, -24.4, 13.2, -hw + 0.04).box(-31.42, 2.0, -hw + 0.2, -31.2, 13.2, -0.6);
+    CH(b).tube([-27.6, 2.2, -hw - 0.12], [-27.6, 13.2, -hw - 0.12], 0.16, 6);
+    FX(b, '#3a3a3e').box(-31.0, 1.85, -hw - 1.1, -24.6, 2.25, -hw + 0.05);
+    FX(b, '#2a2628').box(30.9, 1.4, -8.6, 32.1, 3.0, 8.6).box(-32.0, 1.4, -8.6, -30.9, 3.0, -0.4);
+    for (const sd of [-1, 1]) { CH(b).cyl([31.2, 3.9, sd * 6.9], [31.5, 3.9, sd * 6.9], 0.85, 0.85, 10, 0); HL(b).cyl([31.25, 3.9, sd * 6.9], [31.55, 3.9, sd * 6.9], 0.7, 0.7, 10, 2); TL(b).box(-31.45, 3.4, sd * 7.0 - 0.7, -31.2, 4.8, sd * 7.0 + 0.7); }
+    deckFurniture(b, {});
+    const upper = N.decker ? N.decker.SEATS : [];
+    return {
+      L, W: 18, H: top + 0.4, show: false, cockpit: 'decker', rearR: 3.0,
+      wheels: [{ x: 22, z: -8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: 22, z: 8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: -18, z: -7.82, r: 3.0, w: 2.6, kind: 'solid' }, { x: -18, z: 7.82, r: 3.0, w: 2.6, kind: 'solid' }],
+      seats: [BUS_DRIVER, upper[N.decker ? N.decker.FRONT : 0] || { x: 25.6, y: 17.8, z: -6.0, pose: 'bench', foot: [28.4, 15.4] }], upper,
+      lamps: { head: [[31.6, 3.9, -6.9], [31.6, 3.9, 6.9]], tail: [[-31.5, 4.1, -7.0], [-31.5, 4.1, 7.0]] }, busLife: true, bus: { rail: 13.0, doorX: -27.6 },
+      decals: [
+        { cell: 'apsrtc', x: -2, y: 15.1, z: hw + 0.14, w: 20, h: 2.6, face: 'R' }, { cell: 'apsrtc', x: -2, y: 15.1, z: -hw - 0.14, w: 20, h: 2.6, face: 'L' },
+        { cell: 'route', x: 31.55, y: 15.1, z: 0, w: 6.0, h: 1.6, face: 'F' }, { cell: 'route', x: -31.5, y: 15.1, z: 0, w: 5.0, h: 1.4, face: 'B' },
+        { cell: 'plate_y', x: 32.15, y: 2.2, z: 0, w: 3.6, h: 0.9, face: 'F' }, { cell: 'plate_y', x: -32.05, y: 2.2, z: 3.4, w: 3.6, h: 0.9, face: 'B' },
+      ],
+    };
+  }
+  defModel('bus_decker', (b) => mkDecker(b, false));
+  defModel('bus_decker_open', (b) => mkDecker(b, true));
   defModel('bus_safari', (b) => mkBus(b, true));
   function mkLorry(b, open) {
     const L = 46, hw = 8;
@@ -2073,12 +2211,23 @@
     FX(b, '#2a2a2a').box(fx - 18, 2.0, -hw, fx, 2.4, hw);
     return { wheelAt: [fx - 4.0, dashY + 0.8, 0], wheelTilt: 1.15, wheelR: 2.0 };
   }
+  // the double-decker's top deck in first person (wherever he stands or sits): the deck's furniture with the pillars
+  // between the open windows, the front and back window frames, the ceiling. No body round it, no steering wheel.
+  function mkDeckerInterior(b) {
+    const Y = DDL(), hw = 9, top = Y.top - 0.6, x0 = -30.9, x1 = 31.1, PILLAR = '#8a7a5a';
+    b.part(0);
+    deckFurniture(b, { pillars: true });
+    FX(b, '#e6dfcc').box(x0, top, -hw, x1, top + 0.3, hw);
+    FX(b, PILLAR).box(x1 - 0.5, DD_WIN[0], -0.3, x1, 23.6, 0.3).box(x1 - 0.5, 23.6, -hw, x1, top, hw).box(x1 - 0.5, DD_WIN[0], -hw, x1, 23.6, -8.2).box(x1 - 0.5, DD_WIN[0], 8.2, x1, 23.6, hw);
+    FX(b, PILLAR).box(x0, 18.0, -hw, x0 + 0.4, 23.2, -7.6).box(x0, 18.0, 7.6, x0 + 0.4, 23.2, hw).box(x0, 23.2, -hw, x0 + 0.4, top, hw);
+    return { wheelAt: null };
+  }
   const INTERIORS = {};
   function interior(md) {
     let it = INTERIORS[md.key];
     if (it) return it;
     const b = new AB();
-    const meta = md.cockpit === 'car' ? mkCarInterior(b, md) : mkHeavyInterior(b, md, md.cockpit === 'bus');
+    const meta = md.cockpit === 'car' ? mkCarInterior(b, md) : md.cockpit === 'decker' ? mkDeckerInterior(b) : mkHeavyInterior(b, md, md.cockpit === 'bus');
     it = INTERIORS[md.key] = Object.assign({ geo: b.build(), pool: null }, meta);
     it.pool = new Pool('int:' + md.key, it.geo, VEH_MAT, 1, { iVA: 4, iVB: 4 }, { max: 4 });
     return it;
@@ -2130,6 +2279,8 @@
       g.fillStyle = '#2a8a4a'; g.fillRect(x + 8, y + Hh - 9, W - 16, 3);
     } else if (kind === 'dipper') {
       g.fillStyle = '#1a1214'; g.fillRect(x, y, W, Hh); text('USE DIPPER AT NIGHT', '#f2c230', 22, y + Hh / 2 + 2);
+    } else if (kind === 'apsrtc') {
+      g.clearRect(x, y, W, Hh); text('A.P.S.R.T.C.', '#a8201c', 40, y + Hh / 2 + 3);
     } else if (kind === 'citybus') {
       g.clearRect(x, y, W, Hh); text('CITY BUS', '#fff4dc', 40, y + Hh / 2 + 3);
     } else if (kind === 'route') {
@@ -2260,7 +2411,7 @@
     cycle: 'cycle', bsa_cycle: 'cycle', ladiescycle: 'ladies', hero_cycle: 'hero', old_cycle: 'hero', chinnu_cycle: 'hero_low', hercules_cycle: 'hercules', hercules_gears: 'hercules',
     kid_cycle: 'kid', scooty: 'scooty', akka_scooty: 'scooty', luna: 'luna', pochaiah_luna: 'luna_police', chetak: 'chetak', family_chetak: 'chetak', pasha_lambretta: 'lambretta',
     rx100: 'rx100', bunty_rx100: 'rx100', auto: 'auto', yadagiri_auto: 'auto', ambassador: 'ambassador', govt_ambassador: 'ambassador_govt', taxi_ambassador: 'ambassador_taxi',
-    maruti800: 'maruti', padmini: 'padmini', bus: 'bus', safari_bus: 'bus_safari', lorry: 'lorry', peacock_lorry: 'lorry_open', boat: 'boat', rickshaw: 'rickshaw',
+    maruti800: 'maruti', padmini: 'padmini', lux_sedan: 'luxsedan', suv: 'suv', bus: 'bus', decker_bus: 'bus_decker', safari_bus: 'bus_safari', lorry: 'lorry', peacock_lorry: 'lorry_open', boat: 'boat', rickshaw: 'rickshaw',
   };
   const LOOK_MODEL = { hero: 'hero', cycle: 'cycle', hercules: 'hercules', kid: 'kid', scooty: 'scooty', luna: 'luna', chetak: 'chetak', rx100: 'rx100', ladies: 'ladies' };
   const CLS_MODEL = { bike: 'cycle', car: 'ambassador', auto: 'auto', heavy: 'lorry', boat: 'boat' };
@@ -2440,12 +2591,13 @@
     return v._bus[k];
   }
   function busLife(v, md, sx, steer) {
-    const d = camDist(v.x, 8, v.y);
+    const d = camDist(v.x, 8 + TH(v.x, v.y), v.y);
     if (d > 300 || v.fallen) return;
     const seed = (v.seed | 0) & 0xffff, t = H.time, pl = N.player;
     const low = H.quality.tier === 'low';
     const crowdN = (low ? 2 + (seed % 4) : 4 + (seed % 9)) * (d < (low ? 120 : 170) ? 1 : 0), boys = v.driver ? (seed >> 3) % 4 : 0;
     const accel = clamp((v.throttle || 0) * 0.5 - (v.ctl && v.ctl.brake ? 0.6 : 0), -0.6, 0.5);
+    const rail = md.bus ? md.bus.rail : 15.1;
     if (DBG.track === v && DBG.rec) DBG.rec.bus = { crowd: crowdN, boys };
     if (v.driver && v.driver !== pl && d < 220) submitRider(md, BUS_DRIVER, riderLookOf(v), v.seed, sx, { steer });
     // standing in the aisle, one hand up on the rail (inside: only near enough to see through the glass)
@@ -2455,7 +2607,7 @@
         const x = (-24 + (k * 37 % 47)) * sx, z = ((k * 13) % 5 - 2) * 0.9, floor = 4.4;
         poseStand(J, t, seed + k);
         const sway = Math.sin(t * 1.3 + k) * 0.03 - accel * 0.18;
-        armsTo(J, sway, 0.25, (15.1 - floor) / sc, 0.5, 0.2, (15.1 - floor) / sc - 0.2, 0.9, 0, -0.9);
+        armsTo(J, sway, 0.25, (rail - floor) / sc, 0.5, 0.2, (rail - floor) / sc - 0.2, 0.9, 0, -0.9);
         J[4] = 0.1 + 0.05 * Math.sin(t + k); J[6] = 0.3; J[8] = 0.1; // the other hand down (a bag, a tiffin)
         J[12] = Math.sin(t * 0.3 + k * 1.7) * 0.6;
         submitPerson(look, seed + k, FR, x, floor, z, J, { yaw: k % 3 === 0 ? Math.PI / 2 : k % 3 === 1 ? -Math.PI / 2 : 0, noBlob: true });
@@ -2464,7 +2616,7 @@
     // footboard boys at the rear door (left side): standing on the step, a hand on the door pole, leaning out
     for (let k = 0; k < boys; k++) {
       const look = busLook(v, 20 + k, k % 2 ? 'student' : 'man'), s = lookSpec(look, seed + 50 + k), sc = s.size;
-      const doorX = -8.2 * sx, hw = md.W / 2, rx = doorX + (k - (boys - 1) / 2) * 1.5, rz = -hw - 0.75 - (k === 1 ? 0.3 : 0);
+      const doorX = (md.bus ? md.bus.doorX : -8.2) * sx, hw = md.W / 2, rx = doorX + (k - (boys - 1) / 2) * 1.5, rz = -hw - 0.75 - (k === 1 ? 0.3 : 0);
       BF.set(0, 0, 0, -Math.PI / 2, 0, 0); // facing +z: into the bus
       const loc = (x, y, z) => { const m = BF.m, dx = x - rx, dy = y - 2.25, dz = z - rz; BQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; BQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; BQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc; return BQ; };
       poseStand(J, t, seed + 50 + k);
@@ -2477,12 +2629,38 @@
       submitPerson(look, seed + 50 + k, FR, rx, 2.25, rz, J, { yaw: -Math.PI / 2, noBlob: true });
     }
   }
+  // the double-decker's top deck: about half its seats taken (decker.js: the same people as the 2D cutaway), drawn in
+  // first person too (they sit behind him); the player in the seat he took, or (DECK_P) walking about / standing,
+  // drawn at the end of vehicleEntity through personEntity (which sets its own frame)
+  let DECK_P = null;
+  function deckerUpper(v, md, sx, fps) {
+    const DK = N.decker;
+    if (!DK || v.fallen) return;
+    const pl = N.player, deck = DK.onDeck(pl) && DK.state.v === v, d = camDist(v.x, 20, v.y);
+    if (!deck && d > (H.quality.tier === 'low' ? 140 : 230)) return;
+    const looks = DK.looks(v);
+    for (const s of DK.SEATS) { const look = looks[s.i]; if (look && (deck || d < 200 || s.i % 2)) submitRider(md, s, look, (v.seed | 0) + 101 + s.i, sx, {}); }
+    if (!deck) return;
+    const st = DK.state;
+    if (st.sit >= 0) submitRider(md, DK.SEATS[st.sit], pl.look, 7, sx, { fpsHide: fps, near: true, actor: pl });
+    else DECK_P = v;
+    // the passengers walking the aisle (getting off at a stop, finding a seat): drawn like him, at the end
+    let k = 0;
+    for (const w of DK.walkers(v)) {
+      const e = w.ent || (w.ent = { id: 70000 + ((v.seed | 0) & 0xfff) * 16 + (k & 15), look: w.look, anim: { phase: 0, speed: 0, run: false }, vx: 0, vy: 0, alive: true });
+      const q = DK.toWorld(v, w.x, w.z);
+      e.x = q.x; e.y = q.y; e.angle = e.facing = (v.angle || 0) + w.a; e.speed3 = w.sp;
+      DECK_W.push(e); k++;
+    }
+  }
+  const DECK_W = [];
   const SW = [0, 0, 0, 0, 0, 0];
   function vehicleEntity(v) {
     const T = v.T || (N.vehicles && N.vehicles.TYPES[v.type]) || null;
-    const md = model(modelKeyFor(T));
     const pl = N.player, mine = !!pl && pl.vehicle === v;
     const fps = H.mode === 'fps' && mine;
+    // up on a double-decker's top deck in third person: the roof comes off
+    const md = model(mine && !fps && T && T.topDeck && pl.passenger === 'deck' ? 'bus_decker_open' : modelKeyFor(T));
     const sx = T && T.w ? T.w / md.L : 1, sz = T && T.d && md.W ? clamp(T.d / md.W, 0.7, 1.4) : 1;
     const t = H.time;
     let roll = 0, pitch = 0, yOff = 0;
@@ -2496,9 +2674,15 @@
     const j = v.jolt || 0;
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
-    FR.set(v.x, yOff, v.y, -(v.angle || 0), roll, pitch);
+    const th = TH(v.x, v.y);
+    if (N.terrain && N.terrain.ready && !md.boat) {
+      const sl = N.terrain.slopeAt(v.x, v.y), ca = Math.cos(v.angle || 0), sa = Math.sin(v.angle || 0);
+      pitch += Math.atan(sl.gx * ca + sl.gy * sa); // nose up the hill
+      roll -= Math.atan(-sl.gx * sa + sl.gy * ca) * (md.bike ? 0.35 : 1); // the high side up (a rider keeps his bike nearly upright)
+    }
+    FR.set(v.x, yOff + th, v.y, -(v.angle || 0), roll, pitch);
     vehicleFx(v, T, md);
-    if (!visible(v.x, md.H * 0.5, v.y, md.L * 0.55 * sx + 3)) {
+    if (!visible(v.x, md.H * 0.5 + th, v.y, md.L * 0.55 * sx + 3)) {
       if (DBG.track === v) DBG.rec = { kind: 'vehicle', model: md.key, spin: -((v.wheelPhase || 0) * 2) / (md.rearR || 2), culled: true, frame: ST.frame };
       return;
     }
@@ -2554,19 +2738,20 @@
     }
     // a city bus at rush hour: the driver, a standing crowd inside, footboard boys at the rear door
     if (md.busLife && !cockpit) busLife(v, md, sx, steerVis);
+    if (md.upper) deckerUpper(v, md, sx, fps);
     // riders: driver, pillion, passengers
     const near = mine;
     // closed cars: seen through the translucent glass when the camera is close enough to tell
-    const seeIn = !md.show && !!md.glassIndex && !cockpit && md.seats.length > 0 && camDist(v.x, 6, v.y) < 170;
+    const seeIn = !md.show && !!md.glassIndex && !cockpit && md.seats.length > 0 && camDist(v.x, 6 + th, v.y) < 170;
     if (md.show || fps || seeIn) {
       const seats = md.seats;
-      if (v.driver && seats[0] && !v.fallen && !cockpit) {
+      if (v.driver && seats[0] && !v.fallen && !cockpit && !md.busLife) {
         submitRider(md, seats[0], dLook, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null, kainchi });
       }
       const pil = v.pillion;
       if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near, actor: pil.look ? pil : null });
       const pass = v.passenger;
-      if (pass && pass !== pil && seats[1] && !v.fallen && (md.show || seeIn || pass === pl)) submitRider(md, seats[1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near, actor: pass.look ? pass : null });
+      if (pass && pass !== pil && seats[1] && !v.fallen && !(pass === pl && pl.passenger === 'deck') && (md.show || seeIn || pass === pl)) submitRider(md, seats[1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near, actor: pass.look ? pass : null });
       // ambient passengers in traffic autos / rickshaws (3D life; the 2D sprite shows the canopy)
       if ((md.key === 'auto' || md.key === 'rickshaw') && v.driver && !pass && !mine && ((v.seed | 0) % 3 === 0)) {
         const n = 1 + ((v.seed | 0) % 2);
@@ -2575,7 +2760,7 @@
       if (md.boat && !v.driver && v.T && v.T.id === 'boat' && (v.seed | 0) % 2) submitRider(md, seats[0], extraLook(v, 3), v.seed, sx, {});
     }
     // first person in a car / bus / lorry: the steering wheel with the player's hands on it
-    if (cockpit && it) {
+    if (cockpit && it && it.wheelAt) {
       if (!STEER_POOL) STEER_POOL = new Pool('steerwheel', buildSteeringWheel(), VEH_MAT, 2, { iVA: 4, iVB: 4 }, { max: 4 });
       const si = STEER_POOL.add();
       const wa = it.wheelAt, tilt = it.wheelTilt, wr = it.wheelR;
@@ -2616,7 +2801,7 @@
       if (beacon) { FR.apply(0, md.H + 0.6, 0, P3); glow(P3[0], P3[1], P3[2], beacon === 2 ? 0.2 : 1.0, beacon === 2 ? 0.4 : 0.15, beacon === 2 ? 1.0 : 0.08, 7); }
     }
     // painted lettering
-    if (OPT.decals && DEC.pool && md.decals.length && !cockpit && camDist(v.x, 5, v.y) < 260) {
+    if (OPT.decals && DEC.pool && md.decals.length && !cockpit && camDist(v.x, 5 + th, v.y) < 260) {
       for (const d of md.decals) {
         const di = DEC.pool.add(); if (di < 0) break;
         const fy = FACE_YAW[d.face] || 0;
@@ -2626,8 +2811,11 @@
         ST.decals++;
       }
     }
-    if (BLOBS && !md.boat) blob(v.x, v.y, md.L * sx * 1.05, md.W * sz * 1.15, v.angle || 0, 0);
+    if (BLOBS && !md.boat) blob(v.x, v.y, md.L * sx * 1.05, md.W * sz * 1.15, v.angle || 0, th);
     DBG.riderNext = false;
+    // (each on the ground under his own spot: on a slope the pitched deck rises with it, near enough)
+    if (DECK_P === v) { DECK_P = null; personEntity(pl, 0, { el: DDL().floor + yOff + TH(pl.x, pl.y), v: N.decker.speed() }); }
+    if (DECK_W.length) { for (const e of DECK_W) personEntity(e, 0, { el: DDL().floor + yOff + TH(e.x, e.y), v: e.speed3 }); DECK_W.length = 0; }
   }
 
   /* ================================================================ ANIMALS + PIGEONS */
@@ -2835,14 +3023,14 @@
     if (SIM.frame !== ST.frame) { const t = nowS(); SIM.dt = clamp(t - SIM.last, 0, 0.1); SIM.last = t; SIM.frame = ST.frame; }
     return SIM.dt;
   }
-  function personEntity(e, dt) {
-    if (e.hidden || e.vehicle) return;
+  function personEntity(e, dt, deck) {
+    if (e.hidden || (e.vehicle && !deck)) return;
     const p = N.player, isP = e === p;
     const look = e.look;
     if (!look) return;
     // simulation time of this frame (slow motion / pause freeze the gait with the sim)
     dt = simDt();
-    let el = H.elev(e);
+    let el = deck ? deck.el : H.elev(e);
     if (!el && e.roofH) el = e.roofH * VS;
     const face = isFinite(e.facing) && isP ? e.facing : (e.angle || 0);
     const t = H.time, seed = seedOf(e);
@@ -2852,9 +3040,9 @@
     if (!st) { st = { cyc: Math.random(), v: 0, lx: x, ly: y, yaw: face, hy: 0, gw: 0, yawRate: 0 }; PSTATE.set(e, st); }
     // speed: the entity's velocity, else its position change
     if (dt > 1e-5) {
-      let v = Math.hypot(e.vx || 0, e.vy || 0);
-      if (!(v > 0)) v = Math.min(200, Math.hypot(x - st.lx, y - st.ly) / dt);
-      if (Math.hypot(x - st.lx, y - st.ly) > 40) v = 0; // teleported
+      let v = deck ? deck.v : Math.hypot(e.vx || 0, e.vy || 0);
+      if (!deck && !(v > 0)) v = Math.min(200, Math.hypot(x - st.lx, y - st.ly) / dt);
+      if (!deck && Math.hypot(x - st.lx, y - st.ly) > 40) v = 0; // teleported
       st.lx = x; st.ly = y;
       st.v += (v - st.v) * Math.min(1, dt * 12);
       // smooth turning
@@ -3020,8 +3208,9 @@
       for (let k = 0; k < e.cars.length; k++) {
         const c = e.cars[k]; if (!c || !isFinite(c.x)) continue;
         const md = model(k === 0 ? 'train_engine' : 'train_coach');
-        FR.set(c.x, 0, c.y, -(c.a || 0), 0, 0);
-        if (!visible(c.x, 4, c.y, 10)) continue;
+        const tc = TH(c.x, c.y);
+        FR.set(c.x, tc, c.y, -(c.a || 0), 0, 0);
+        if (!visible(c.x, 4 + tc, c.y, 10)) continue;
         const P = vpool(md), i = P.add(); if (i < 0) continue;
         FR.write(P.M, i * 16, 0, 0, 0, 0, 0, 0, 1, 1, 1);
         const A = P.A.iVA.array, B = P.A.iVB.array, q = i * 4;
@@ -3487,7 +3676,7 @@
     // kites + strings to the kids on the roofs
     for (let i = 0; i < sc.kites.length; i++) {
       const k = sc.kites[i];
-      const kh = k.h * VS, ah = (k.ah != null ? k.ah - 9 : 0) * VS + 6.5;
+      const kh = k.h * VS + TH(k.x, k.y), ah = (k.ah != null ? k.ah - 9 : 0) * VS + 6.5 + TH(k.ax, k.ay); // (above the ground under each end)
       const yaw = -Math.atan2(k.ay - k.y, k.ax - k.x);
       submitProp('kite', k.x, kh, k.y, yaw, pack(k.color || KCOLS[i % KCOLS.length]), pack(KCOLS[(i + 3) % KCOLS.length]), 1.25, Math.sin(t * 2.1 + i) * 0.25);
       line(k.ax, ah, k.ay, k.x, kh, k.y, Math.hypot(k.x - k.ax, k.y - k.ay) * 0.06, 0.9, 0.88, 0.8, 7);
@@ -3502,7 +3691,7 @@
       if (el > 0) { poseRest(J); armsTo(J, -0.05, 1.3, 8.4, -0.35, 1.5, 9.0, 0.35); }
       else if (q.carry) { const wk = q.carry === 'bonam' ? 0.85 : 1; gaitParams(6, false, wk, GP); gaitPose(J, t * GP.f + i * 0.37, GP, wk); if (q.carry === 'bonam') armsTo(J, 0.02, 0.25, 9.2, -0.62, 0.25, 9.2, 0.62); else if (q.carry === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 10 + i) * 0.3; J[7] = 1.4; } }
       else { poseRest(J); J[4] += Math.sin(t * 1.3 + i) * 0.05; J[5] += Math.sin(t * 1.1 + i * 2) * 0.05; }
-      FR.set(q.x, el, q.y, -(q.a || 0), 0, 0);
+      FR.set(q.x, el + TH(q.x, q.y), q.y, -(q.a || 0), 0, 0);
       submitPerson(look, 1000 + i, FR, 0, 0, 0, J, {});
     }
     // props
@@ -3513,8 +3702,9 @@
         case 'lorry': case 'tractor': case 'giant': {
           const s = pr.kind === 'tractor' ? 0.75 : pr.kind === 'giant' ? 1.2 : 1;
           const md = model('lorry_open');
-          FR.set(pr.x, 0, pr.y, yaw, 0, 0);
-          if (!visible(pr.x, 8, pr.y, 30 * s)) break;
+          const tp = TH(pr.x, pr.y);
+          FR.set(pr.x, tp, pr.y, yaw, 0, 0);
+          if (!visible(pr.x, 8 + tp, pr.y, 30 * s)) break;
           const P = vpool(md), vi = P.add();
           if (vi >= 0) { FR.write(P.M, vi * 16, 0, 0, 0, 0, 0, 0, s, s, s); const A = P.A.iVA.array, B = P.A.iVB.array, q2 = vi * 4; A[q2] = pack(['#e8742a', '#2a5cb8', '#c8202a', '#3a8a3a', '#f2c230'][i % 5]); A[q2 + 1] = pack('#e8c060'); A[q2 + 2] = night > 0.1 ? 1 : 0; A[q2 + 3] = 0; B[q2] = 0; B[q2 + 1] = 0; B[q2 + 2] = 0; B[q2 + 3] = 0; }
           for (const w of md.wheels) { const W = WHEELS.solid, wi = W.add(); if (wi >= 0) FR.write(W.M, wi * 16, w.x * s, w.r * s, w.z * s, 0, 0, 0, w.r * s, w.r * s, w.w * s); }
@@ -3527,7 +3717,7 @@
           const lake = Math.atan2(pr.oy || 0, pr.ox || 1);
           const cy = -(lake - Math.PI / 2);
           const md = model('crane');
-          FR.set(pr.x, 0, pr.y, cy, 0, 0);
+          FR.set(pr.x, TH(pr.x, pr.y), pr.y, cy, 0, 0);
           const P = vpool(md), vi = P.add();
           if (vi >= 0) { FR.write(P.M, vi * 16, 0, 0, 0, 0, 0, 0, 1, 1, 1); const A = P.A.iVA.array, B = P.A.iVB.array, q2 = vi * 4; A[q2] = pack('#e0b020'); A[q2 + 1] = pack('#c8901a'); A[q2 + 2] = 0; A[q2 + 3] = 0; B[q2] = slew; B[q2 + 1] = 0; B[q2 + 2] = 0; B[q2 + 3] = 0; }
           for (const w of md.wheels) { const W = WHEELS.solid, wi = W.add(); if (wi >= 0) FR.write(W.M, wi * 16, w.x, w.r, w.z, 0, 0, 0, w.r, w.r, w.w); }
@@ -3541,15 +3731,15 @@
           break;
         }
         case 'stall': {
-          const md = submitProp('stall', pr.x, 0, pr.y, yaw, pack(pr.color || '#2a8c82'));
-          if (md && night > 0.1) { FR2.set(pr.x, 0, pr.y, yaw, 0, 0).apply(0, 7.6, 0, P3); glow(P3[0], P3[1], P3[2], night, 0.85 * night, 0.6 * night, 6); }
+          const tp = TH(pr.x, pr.y), md = submitProp('stall', pr.x, tp, pr.y, yaw, pack(pr.color || '#2a8c82'));
+          if (md && night > 0.1) { FR2.set(pr.x, tp, pr.y, yaw, 0, 0).apply(0, 7.6, 0, P3); glow(P3[0], P3[1], P3[2], night, 0.85 * night, 0.6 * night, 6); }
           break;
         }
-        case 'haleem_bhatti': submitProp('bhatti', pr.x, 0, pr.y, 0, 0); if (night > 0.1) glow(pr.x + 3.2, 1.4, pr.y, night, 0.45 * night, 0.15 * night, 5); break;
-        case 'chalivendram': submitProp('shed', pr.x, 0, pr.y, yaw, 0); break;
-        case 'crib': submitProp('crib', pr.x, 0, pr.y, 0, pack('#f2e8a0')); if (night > 0.1) glow(pr.x, 9.4, pr.y, night, night, 0.8 * night, 5); break;
+        case 'haleem_bhatti': { const tp = TH(pr.x, pr.y); submitProp('bhatti', pr.x, tp, pr.y, 0, 0); if (night > 0.1) glow(pr.x + 3.2, tp + 1.4, pr.y, night, 0.45 * night, 0.15 * night, 5); break; }
+        case 'chalivendram': submitProp('shed', pr.x, TH(pr.x, pr.y), pr.y, yaw, 0); break;
+        case 'crib': { const tp = TH(pr.x, pr.y); submitProp('crib', pr.x, tp, pr.y, 0, pack('#f2e8a0')); if (night > 0.1) glow(pr.x, tp + 9.4, pr.y, night, night, 0.8 * night, 5); break; }
         case 'bulbs': {
-          const h0 = (pr.h || 14) * VS, h1 = (pr.h1 || 14) * VS, n = clamp(Math.round(Math.hypot(pr.x1 - pr.x, pr.y1 - pr.y) / 5), 3, 24);
+          const h0 = (pr.h || 14) * VS + TH(pr.x, pr.y), h1 = (pr.h1 || 14) * VS + TH(pr.x1, pr.y1), n = clamp(Math.round(Math.hypot(pr.x1 - pr.x, pr.y1 - pr.y) / 5), 3, 24);
           const cols = pr.colors || ['#40ff80', '#ffffff'];
           line(pr.x, h0, pr.y, pr.x1, h1, pr.y1, 2.5, 0.12, 0.12, 0.12, 8);
           for (let k = 1; k < n; k++) {
@@ -3579,7 +3769,7 @@
           const st = d && (d.style || ''), id = d && (d.id || '');
           if (!(st === 'cantonment' || /secunderabad|bolarum|trimulgherry|marredpally|cantonment|begumpet/.test(id))) return;
           if (U.hash2(s.x * 0.37, s.y * 0.53) > 0.3) return;
-          XMAS.cache.push([s.x + s.w / 2, s.h * VS - 3.5, s.y + s.d + 0.8, ['#e8402a', '#f2c230', '#f4f0e8', '#2a8ad8'][(s.x * 7 + s.y) % 4 | 0]]);
+          XMAS.cache.push([s.x + s.w / 2, s.h * VS - 3.5 + (H.terrainBase ? H.terrainBase(s.x, s.y, s.x + s.w, s.y + s.d) : 0), s.y + s.d + 0.8, ['#e8402a', '#f2c230', '#f4f0e8', '#2a8ad8'][(s.x * 7 + s.y) % 4 | 0]]);
         });
       } catch (e) { /* no stars */ }
     }
@@ -3597,8 +3787,9 @@
     const p = N.player; if (!p || !D.lm || Math.hypot(D.lm.x - p.x, D.lm.y - p.y) > 700) return;
     for (const v of D.parked || []) {
       const md = model(DRESS_MODEL[v.kind] || 'chetak');
-      FR.set(v.x, 0, v.y, -(v.a || 0), -(md.standLean || 0), 0);
-      if (!visible(v.x, 3, v.y, 10)) continue;
+      const tv = TH(v.x, v.y);
+      FR.set(v.x, tv, v.y, -(v.a || 0), -(md.standLean || 0), 0);
+      if (!visible(v.x, 3 + tv, v.y, 10)) continue;
       const P = vpool(md), i = P.add(); if (i < 0) continue;
       FR.write(P.M, i * 16, 0, 0, 0, 0, 0, 0, 1, 1, 1);
       const A = P.A.iVA.array, B = P.A.iVB.array, q = i * 4; A[q] = pack(v.col); A[q + 1] = pack(shadeHex(v.col, 0.7)); A[q + 2] = 0; A[q + 3] = 0; B[q] = 0; B[q + 1] = 0; B[q + 2] = 0; B[q + 3] = 0;
@@ -3608,7 +3799,7 @@
     for (let k = 0; k < (D.peds || []).length; k++) {
       const q = D.peds[k]; if (!q.look) continue;
       poseRest(J); J[4] += Math.sin(t * 1.2 + (q.ph || 0)) * 0.08; J[5] = 0.2 + Math.sin(t * 2 + k) * 0.1;
-      FR.set(q.x, 0, q.y, -(q.a || 0), 0, 0);
+      FR.set(q.x, TH(q.x, q.y), q.y, -(q.a || 0), 0, 0);
       submitPerson(q.look, 2000 + k, FR, 0, 0, 0, J, {});
     }
   }
@@ -3684,7 +3875,7 @@
   /** per vehicle, every frame (also off screen, so marks and smoke stay continuous) */
   function vehicleFx(v, T, md) {
     if (!FXS.pt || OPT.fx === false || !T) return;
-    if (camDist(v.x, 3, v.y) > 320) { v._sk3 = null; return; }
+    if (camDist(v.x, 3 + TH(v.x, v.y), v.y) > 320) { v._sk3 = null; return; }
     const tnow = nowS();
     // skid marks along vehicles.js's own rear-wheel track points
     if (v.skidding && (v.skL || v.skR) && T.mode !== 'boat') {

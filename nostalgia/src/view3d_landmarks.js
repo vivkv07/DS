@@ -87,10 +87,12 @@
     shader.uniforms.uNight = H.uniforms.uNight;
     // floodlight colour per material (one shared program: same code + cache key, own uniform values)
     shader.uniforms.uFlood = (this && this.userData && this.userData.uFlood) || { value: new THREE.Vector3(1.0, 0.80, 0.56) };
+    // [terrain] the floodlight fades with the height above the model's own base (object space, not world y: the
+    // models stand on the terrain, up to ~140 u above / ~60 u below the old flat ground)
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nvarying vec4 vKit;\nvarying float vKitY;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvKit = facade;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n\tvKitY = (modelMatrix * vec4(transformed, 1.0)).y;');
+      .replace('#include <project_vertex>', '#include <project_vertex>\n\tvKitY = transformed.y;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uNight;\nuniform vec3 uFlood;\nvarying vec4 vKit;\nvarying float vKitY;')
       .replace('#include <emissivemap_fragment>', [
@@ -451,13 +453,29 @@
   }
 
   /* ================================================================ model (one landmark or one batch) */
+  // [terrain] the ground under a world point (H.terrainAt: 0 until terrain.js is ready) and a landmark's base as the
+  // core lifts a landmark object (H.terrainBase over its footprint: the low corner)
+  const tAt = (x, y) => (H && H.terrainAt ? H.terrainAt(x, y) : 0);
+  const lmBase = (lm) => (H && H.terrainBase ? H.terrainBase(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2) : 0);
   class Model {
-    constructor(wx, wz) {
+    /** wx, wz: the model's world origin; wy: the height its root will stand at (batches / decor: their own ground) */
+    constructor(wx, wz, wy) {
       this.F = new Frame(); this.parts = new Map(); this.glows = { gS: [], gM: [], gL: [] };
-      this.lights = []; this.ticks = []; this.groups = {}; this.wx = wx || 0; this.wz = wz || 0;
+      this.lights = []; this.ticks = []; this.groups = {}; this.wx = wx || 0; this.wz = wz || 0; this.wy = wy || 0;
       this.sub = null;
     }
     at(ox, oz, rot) { this.F.set(ox, oz, rot); return this; }
+    /** [terrain] the ground under local (u, v) of the current frame, relative to the root's wy */
+    ground(u, v) { return tAt(this.wx + this.F.X(u, v), this.wz + this.F.Z(u, v)) - this.wy; }
+    /** [terrain] mark what is built so far; lift(mark, dy) raises everything built since (one batch member, one
+     *  decor piece on its own ground: rigid, like the core's landmarks) */
+    mark() { const g = new Map(); for (const p of this.parts.values()) if (!p.shared) g.set(p.kb.g, p.kb.g.n); return { g, gl: [this.glows.gS.length, this.glows.gM.length, this.glows.gL.length] }; }
+    lift(mk, dy) {
+      if (!dy) return this;
+      for (const p of this.parts.values()) { if (p.shared) continue; const G = p.kb.g, P = G.P; for (let k = mk.g.get(G) || 0; k < G.n; k++) P[k * 3 + 1] += dy; }
+      ['gS', 'gM', 'gL'].forEach((key, i) => { const a = this.glows[key]; for (let k = mk.gl[i]; k < a.length; k += 4) a[k + 1] += dy; });
+      return this;
+    }
     get k() { return this.part('kit'); }
     get k2() { return this.part('kit2'); }
     /** sub-builder by key; tag puts it in a toggled sub group */
@@ -632,21 +650,25 @@
     const c = cells.get(cellKey(d.cls, lm));
     if (!c) return buildOne(T, lm, h);
     if (c.owner) return false;
+    // [terrain] the cell stands at the ground under its centre (tb), each member raised to its own base; the core
+    // adds the asking member's base to the object, so the root is offset by it (also when the cached cell is reused)
     const hit = cacheGet('cell:' + c.key);
-    if (hit) { c.owner = lm.id; return hit; }
+    if (hit) { c.owner = lm.id; hit.position.y = (hit.userData.tb || 0) - lmBase(lm); return hit; }
     let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
     for (const m of c.members) { x0 = Math.min(x0, m.x); z0 = Math.min(z0, m.y); x1 = Math.max(x1, m.x); z1 = Math.max(z1, m.y); }
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    const md = new Model(cx, cz);
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, tb = tAt(cx, cz);
+    const md = new Model(cx, cz, tb);
     for (const m of c.members) {
-      const dm = defFor(m);
+      const dm = defFor(m), mk = md.mark();
       md.at(m.x - cx, m.y - cz, rotFor(m));
       try { dm.fn(md, m, dims(m)); } catch (e) { N.err('lm3d.build:' + m.draw, e); }
+      md.lift(mk, lmBase(m) - tb);
     }
     const g = md.finish();
     g.name = 'lm3d-cell:' + c.key;
     const lod = wrapLod(g, CLS[c.cls][isLow() ? 1 : 0]);
-    lod.position.set(cx, 0, cz);
+    lod.position.set(cx, tb - lmBase(lm), cz);
+    lod.userData.tb = tb;
     lod.userData.worldSpace = true;
     lod.userData.cell = c;
     c.owner = lm.id;
@@ -3168,13 +3190,15 @@
   }
   function buildMarket(md, it) {
     const k = md.k, k2 = md.k2;
+    const dS = it.stalls.map((s) => tAt(s.x, s.y) - md.wy); // [terrain] each stall on its own ground
+    let si = 0;
     for (const s of it.stalls) {
-      const rng = U.rng('st' + s.seed);
+      const rng = U.rng('st' + s.seed), mk = md.mark(), dy = dS[si++];
       // frame: u along the road, +v towards the vendor's (wall) side
       md.at(s.x - it.x, s.y - it.y, 0);
       const rot = Math.atan2(s.wy, s.wx);
       md.at(s.x - it.x, s.y - it.y, PI / 2 - rot);
-      if (it.type === 'kites' || it.type === 'books') { (it.type === 'kites' ? kiteStall : bookStall)(md, { id: 'mk' + s.seed }, { L: 16, D: 9 }); continue; }
+      if (it.type === 'kites' || it.type === 'books') { (it.type === 'kites' ? kiteStall : bookStall)(md, { id: 'mk' + s.seed }, { L: 16, D: 9 }); md.lift(mk, dy); continue; }
       k.c(WOOD).fx(0, 0, 0).box(-4.6, 0, -2.4, 4.6, 3, 2.4);
       const G = GOODS[it.type] || GOODS.toys;
       for (let u = -4.2; u < 4.1; u += 1.4) for (let v = -2; v < 2; v += 1.3) {
@@ -3186,11 +3210,12 @@
       k.c('#8a6a3a'); for (const u of [-4.8, 4.8]) k.bar(u, 0, 2.6, u, 9.2, 2.6, 0.35);
       for (let i = 0; i < 4; i++) { const u0 = -5.6 + i * 2.8, u1 = u0 + 2.8; k2.c(s.tarp[i % 2]).q(u0, 9.4, 5.6, u1, 9.4, 5.6, u1, 8.4, 1.6, u0, 8.4, 1.6); }
       md.glow(0, 9, 2, it.type === 'bangles' ? '#ffe070' : '#ffd090', 'gM');
+      md.lift(mk, dy);
     }
     // bulb strings between neighbouring stalls (Laad Bazaar glitter)
     md.at(0, 0, 0);
     const S = it.stalls;
-    for (let i = 1; i < S.length; i++) for (let t = 0; t <= 1.001; t += 0.125) md.glow(S[i - 1].x - it.x + (S[i].x - S[i - 1].x) * t, 9.3 - Math.sin(PI * t) * 1.2, S[i - 1].y - it.y + (S[i].y - S[i - 1].y) * t, t * 8 % 2 ? '#ffe070' : '#ff9a40');
+    for (let i = 1; i < S.length; i++) for (let t = 0; t <= 1.001; t += 0.125) md.glow(S[i - 1].x - it.x + (S[i].x - S[i - 1].x) * t, 9.3 - Math.sin(PI * t) * 1.2 + dS[i - 1] + (dS[i] - dS[i - 1]) * t, S[i - 1].y - it.y + (S[i].y - S[i - 1].y) * t, t * 8 % 2 ? '#ffe070' : '#ff9a40');
   }
   function playgroundItem(pl, park) {
     const [x, y, w, d] = polyBox(park.poly);
@@ -3201,21 +3226,22 @@
   function buildPlayground(md, it) {
     const k = md.k, L = it.L, Wd = it.Wd, pu = Math.min(11, L * 0.2);
     md.at(0, 0, it.long ? 0 : PI / 2);
+    const on = (u, v, fn) => { const mk = md.mark(); fn(); md.lift(mk, md.ground(u, v)); }; // [terrain] each piece on its own ground
     // stumps at both ends of the gully pitch, a brick wicket at the bowler's end
     k.c('#e8e0c8').fx(0, 0, 0);
-    for (const du of [-0.5, 0, 0.5]) k.box(-pu - 0.12 + 0, 0, du - 0.12, -pu + 0.12, 2.4, du + 0.12, { top: false });
-    k.c('#a8502a').box(pu - 0.8, 0, -0.6, pu + 0.8, 1.2, 0.6);
+    on(-pu, 0, () => { for (const du of [-0.5, 0, 0.5]) k.box(-pu - 0.12 + 0, 0, du - 0.12, -pu + 0.12, 2.4, du + 0.12, { top: false }); });
+    on(pu, 0, () => k.c('#a8502a').box(pu - 0.8, 0, -0.6, pu + 0.8, 1.2, 0.6));
     const P = (u, v) => [u, v];
     const cor = [P(-L / 2 + 10, -Wd / 2 + 8), P(L / 2 - 10, -Wd / 2 + 8), P(L / 2 - 10, Wd / 2 - 8), P(-L / 2 + 10, Wd / 2 - 8)];
-    if (!it.kitNear) {
+    if (!it.kitNear) on(cor[0][0], cor[0][1], () => {
       const [su, sv] = cor[0];
       k.c('#c82a2a').bar(su - 5, 0, sv - 2.5, su - 4, 10, sv, 0.4).bar(su - 5, 0, sv + 2.5, su - 4, 10, sv, 0.4).bar(su + 5, 0, sv - 2.5, su + 4, 10, sv, 0.4).bar(su + 5, 0, sv + 2.5, su + 4, 10, sv, 0.4);
       k.c('#2a5cb8').bar(su - 4, 10, sv, su + 4, 10, sv, 0.35);
       for (const du of [-2, 2]) { k.c('#8a8e94').bar(su + du - 0.5, 10, sv, su + du - 0.5, 2.6, sv, 0.1).bar(su + du + 0.5, 10, sv, su + du + 0.5, 2.6, sv, 0.1); k.c('#f2c230').box(su + du - 0.9, 2.4, sv - 0.5, su + du + 0.9, 2.8, sv + 0.5); }
-    }
-    { const [su, sv] = cor[1]; k.c('#2a5cb8').bar(su - 3, 0, sv - 1.1, su - 3, 7, sv - 1.1, 0.3).bar(su - 3, 0, sv + 1.1, su - 3, 7, sv + 1.1, 0.3); k.c('#f2c230').box(su - 3.6, 6.7, sv - 1.3, su - 1.8, 7.1, sv + 1.3); md.k2.c('#e8b020').q(su - 1.8, 7, sv - 1.1, su - 1.8, 7, sv + 1.1, su + 5, 0.5, sv + 1.1, su + 5, 0.5, sv - 1.1); }
-    { const [su, sv] = cor[2]; k.c('#7a5a3a').box(su - 0.6, 0, sv - 0.6, su + 0.6, 2, sv + 0.6).c('#e8402a').bar(su - 5, 1.2, sv, su + 5, 2.8, sv, 0.6); }
-    if (cor[3] && L > 70 && Wd > 50) { const [su, sv] = cor[3]; k.c('#8a8e94').cyl(su, 0, sv, 0.4, 0.4, 4, 6).c('#e8402a').cyl(su, 1, sv, 4, 4, 0.5, 12); }
+    });
+    on(cor[1][0], cor[1][1], () => { const [su, sv] = cor[1]; k.c('#2a5cb8').bar(su - 3, 0, sv - 1.1, su - 3, 7, sv - 1.1, 0.3).bar(su - 3, 0, sv + 1.1, su - 3, 7, sv + 1.1, 0.3); k.c('#f2c230').box(su - 3.6, 6.7, sv - 1.3, su - 1.8, 7.1, sv + 1.3); md.k2.c('#e8b020').q(su - 1.8, 7, sv - 1.1, su - 1.8, 7, sv + 1.1, su + 5, 0.5, sv + 1.1, su + 5, 0.5, sv - 1.1); });
+    on(cor[2][0], cor[2][1], () => { const [su, sv] = cor[2]; k.c('#7a5a3a').box(su - 0.6, 0, sv - 0.6, su + 0.6, 2, sv + 0.6).c('#e8402a').bar(su - 5, 1.2, sv, su + 5, 2.8, sv, 0.6); });
+    if (cor[3] && L > 70 && Wd > 50) on(cor[3][0], cor[3][1], () => { const [su, sv] = cor[3]; k.c('#8a8e94').cyl(su, 0, sv, 0.4, 0.4, 4, 6).c('#e8402a').cyl(su, 1, sv, 4, 4, 0.5, 12); });
   }
   const DEC = { items: null, built: new Map(), t: 0 };
   function decorItems() {
@@ -3247,11 +3273,11 @@
       if (rec && d > near + 260) { h.layer.remove(rec); H.dispose(rec); releaseSigns(rec); DEC.built.delete(it); continue; }
       if (!rec && d < near && builds < 2) {
         builds++;
-        const md = new Model(it.x, it.y);
+        const tb = tAt(it.x, it.y), md = new Model(it.x, it.y, tb); // [terrain] the ground under its centre (pieces: their own)
         try { if (it.kind === 'market') buildMarket(md, it); else buildPlayground(md, it); } catch (e) { N.err('lm3d.decorBuild:' + it.id, e); continue; }
         const obj = md.finish();
         obj.name = 'lm3d-decor:' + it.id;
-        obj.position.set(it.x, 0, it.y);
+        obj.position.set(it.x, tb, it.y);
         const shadows = !!(h.quality && h.quality.shadows);
         obj.traverse((m) => { if (m.isMesh) { m.castShadow = shadows && m.userData.noShadow !== true; m.receiveShadow = shadows; } });
         obj.updateMatrixWorld(true);

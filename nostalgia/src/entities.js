@@ -286,10 +286,16 @@
 
   /* ===================================================== people painter */
   const SKIN = ['#8d5a3b', '#a0683f', '#b97a4f', '#c68b5e', '#7a4a30', '#d29a6a', '#9a6040'];
-  const SHIRT = ['#e8e0d0', '#2a5cb8', '#d8402a', '#3a8a3a', '#f2c230', '#7a3a8a', '#efe9dc', '#2a8c82', '#c86a2a', '#5a6a8a', '#e88aa8', '#8a2a2a'];
-  const PANTS = ['#3a3a4a', '#5a4a3a', '#2a3a5a', '#7a6a5a', '#4a4a4a', '#c8b89a'];
-  const SAREE = ['#d8402a', '#2a8c82', '#f2c230', '#c03a8a', '#3a8a3a', '#f08a24', '#7a3a8a', '#e85a7a', '#2a5cb8'];
-  const LUNGI = ['#2a5cb8', '#3a8a3a', '#7a3a3a', '#efe9dc', '#5a3a8a'];
+  // 2003 tones: terry-cot pastels, the maroons, bottle greens, mustards and navy of a Hyderabad street (not primaries)
+  const SHIRT = ['#e8e0d0', '#2a5cb8', '#b8402a', '#3a7a4a', '#d8b040', '#6a3a7a', '#efe9dc', '#2a7c78', '#b8642a', '#5a6a8a', '#d88aa0', '#7a1f2b',
+    '#1f4a3a', '#c8a020', '#22305a', '#8ab4d8', '#efe2c4', '#a0482a', '#9a8ac0', '#c8d8e8'];
+  const PANTS = ['#3a3a4a', '#5a4a3a', '#2a3a5a', '#7a6a5a', '#4a4a4a', '#c8b89a', '#3a5070', '#6a6a70'];
+  const SAREE = ['#d8402a', '#2a8c82', '#f2c230', '#c03a8a', '#3a8a3a', '#f08a24', '#7a3a8a', '#e85a7a', '#2a5cb8', '#8a1f3a', '#1f6a4a', '#c8a020', '#e8742a', '#5a2a6a'];
+  const LUNGI = ['#2a5cb8', '#3a8a3a', '#7a3a3a', '#efe9dc', '#5a3a8a', '#2a6a7a'];
+  const CHECK = ['#22305a', '#7a1f2b', '#2a5a3a', '#5a4a3a', '#2a5a8a', '#8a2a2a', '#3a3a4a', '#a0482a']; // check lines
+  const SAFARI = ['#b8ab8a', '#8a8a80', '#6a7a8a', '#a89878', '#7a8a7a'];
+  const WOOL = ['#7a1f2b', '#22305a', '#5a5a62', '#3a5a3a', '#8a6a4a', '#c8a020', '#efe6d0', '#4a2a3a'];
+  const BORDER = ['#f2c230', '#e8c060', '#d8402a', '#efe9dc', '#7a1f2b', '#1f6a4a', '#c9a227'];
 
   const PEOPLE_SCALE = 1.5;
   function outline(ctx) { ctx.strokeStyle = 'rgba(25,15,20,0.6)'; ctx.lineWidth = 0.7; ctx.stroke(); }
@@ -318,7 +324,7 @@
     const sw = Math.sin(ph) * stride;
     const twist = -Math.sin(ph) * (0.1 + 0.08 * rk) * mv, sway = -Math.cos(ph) * 0.3 * mv, lean = (0.25 + 0.9 * rk) * mv;
     if (sc !== 1) ctx.scale(sc, sc);
-    const longLegs = !(kind === 'saree' || kind === 'aunty' || kind === 'burqa' || kind === 'uncle' || kind === 'lungi');
+    const longLegs = !(kind === 'saree' || kind === 'aunty' || kind === 'burqa' || kind === 'uncle' || kind === 'lungi' || look.dhoti);
 
     // legs + feet (chappals)
     if (longLegs) {
@@ -338,18 +344,23 @@
       const wrap = kind === 'burqa' ? '#141216' : kind === 'saree' || kind === 'aunty' ? (look.saree || look.shirt || '#d8402a') : (look.lungi || look.pants || '#2a5cb8');
       ctx.fillStyle = wrap;
       ell(ctx, -0.2 + sw * 0.15, 0, 2.6 + mv * 0.4, 3.0); ctx.fill(); outline(ctx);
-      if (kind === 'uncle' || kind === 'lungi') { // checks on the lungi
+      if (look.dhoti) { // the white dhoti's border round its hem, seen past the shoulders front and back
+        ctx.strokeStyle = look.border || '#c9a227'; ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.ellipse(-0.2 + sw * 0.15, 0, 2.3 + mv * 0.4, 2.7, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (kind === 'uncle' || kind === 'lungi') { // checks on the lungi
         ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.35;
         ctx.beginPath(); ctx.moveTo(-2, -2.2); ctx.lineTo(-2, 2.2); ctx.moveTo(0.4, -2.8); ctx.lineTo(0.4, 2.8); ctx.moveTo(-2.4, 0); ctx.lineTo(2, 0); ctx.stroke();
       }
     }
 
+    // a kurta's skirt flares round the hips, below the shoulders
+    if (look.kurta) { ctx.fillStyle = shirt; ell(ctx, -0.45 + sw * 0.1, 0, 2.95, 3.2); ctx.fill(); outline(ctx); }
     // the upper body rides the hips: weight shift, lean, shoulders turned against the stride
     ctx.save();
     ctx.translate(lean * 0.5, sway);
     if (twist) ctx.rotate(twist);
     // arms (swing opposite to legs; a run bends them in and pumps them)
-    const armCol = kind === 'uncle' ? skin : kind === 'burqa' ? '#141216' : kind === 'saree' || kind === 'aunty' ? skin : shirt;
+    const armCol = kind === 'uncle' ? (look.sweater || skin) : kind === 'burqa' ? '#141216' : kind === 'saree' || kind === 'aunty' ? (look.sweater || skin) : (look.sweater || shirt);
     for (const s of [-1, 1]) {
       const ax = -s * sw * (0.8 + 0.3 * rk), ay = s * (3.4 - 0.45 * rk);
       ctx.fillStyle = armCol; ell(ctx, ax * 0.7, ay, 1.6, 0.95); ctx.fill(); outline(ctx);
@@ -364,7 +375,22 @@
     else if (kind === 'saree' || kind === 'aunty') torso = look.blouse || U.shade(look.saree || shirt, 0.75);
     ctx.fillStyle = torso;
     ell(ctx, 0, 0, kind === 'uncle' ? 2.6 : 2.15, 3.5); ctx.fill(); outline(ctx);
-    if (kind === 'uncle') { ctx.fillStyle = 'rgba(0,0,0,0.08)'; ell(ctx, 0.8, 0, 1.4, 2.2); ctx.fill(); }
+    if (look.sweater && kind !== 'burqa') { // the sweater over it (a knit rib round the shoulders)
+      ctx.fillStyle = look.sweater; ell(ctx, 0, 0, 2.2, 3.55); ctx.fill(); outline(ctx);
+      ctx.strokeStyle = U.shade(look.sweater, 0.8); ctx.lineWidth = 0.35; ctx.beginPath();
+      for (let v = -2.6; v <= 2.6; v += 0.9) { ctx.moveTo(-1.2, v); ctx.lineTo(1.2, v); }
+      ctx.stroke();
+    } else if (look.checks) { // checks: the 2003 half-sleeve shirt
+      ctx.save(); ell(ctx, 0, 0, 2.15, 3.5); ctx.clip();
+      ctx.strokeStyle = look.checks; ctx.globalAlpha = 0.55; ctx.lineWidth = 0.4; ctx.beginPath();
+      for (let v = -2.0; v <= 2.0; v += 1.0) { ctx.moveTo(v, -3.6); ctx.lineTo(v, 3.6); }
+      for (let v = -3.0; v <= 3.0; v += 1.0) { ctx.moveTo(-2.2, v); ctx.lineTo(2.2, v); }
+      ctx.stroke(); ctx.restore();
+    }
+    if (look.safari && !look.sweater) { // the safari suit's two flap pockets
+      ctx.fillStyle = U.shade(shirt, 0.8); ctx.fillRect(0.5, -2.3, 1.1, 1.2); ctx.fillRect(0.5, 1.1, 1.1, 1.2);
+    }
+    if (kind === 'uncle' && !look.sweater) { ctx.fillStyle = 'rgba(0,0,0,0.08)'; ell(ctx, 0.8, 0, 1.4, 2.2); ctx.fill(); }
     if (look.stripes) {
       ctx.strokeStyle = look.stripes; ctx.lineWidth = 0.6; ctx.beginPath();
       for (let s = -2.4; s <= 2.4; s += 1.6) { ctx.moveTo(-1.8, s); ctx.lineTo(1.8, s); }
@@ -404,7 +430,10 @@
       }
       if (kind === 'saree' || kind === 'aunty' || kind === 'woman' || look.girl) {
         if (kind === 'aunty') { ctx.fillStyle = hair; ell(ctx, hx - 2.1, 0, 0.95, 0.95); ctx.fill(); ctx.fillStyle = '#f8f4ea'; for (let a = 0; a < 6; a++) ctx.fillRect(hx - 2.1 + Math.cos(a) * 1.05 - 0.25, Math.sin(a) * 1.05 - 0.25, 0.5, 0.5); }
-        else { ctx.strokeStyle = hair; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(hx - 1.8, 0.3); ctx.quadraticCurveTo(hx - 3.6 - sw * 0.2, 0.4, hx - 5.4 - sw * 0.3, 0.9); ctx.stroke(); }
+        else {
+          ctx.strokeStyle = hair; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(hx - 1.8, 0.3); ctx.quadraticCurveTo(hx - 3.6 - sw * 0.2, 0.4, hx - 5.4 - sw * 0.3, 0.9); ctx.stroke();
+          if (look.gajra) { ctx.fillStyle = '#f8f4ea'; for (let k = 0; k < 4; k++) ctx.fillRect(hx - 2.1 - k * 0.55 - sw * 0.05 * k, -0.2 + (k & 1) * 0.6, 0.5, 0.5); } // jasmine down the plait
+        }
       }
       if (look.cap === 'police' || kind === 'police') {
         ctx.fillStyle = '#6a5a3a'; ell(ctx, hx - 0.1, 0, 2.1, 2.1); ctx.fill();
@@ -415,9 +444,56 @@
       } else if (look.cap === 'cricket') {
         ctx.fillStyle = look.capColor || '#2a5cb8'; ell(ctx, hx - 0.2, 0, 1.8, 1.8); ctx.fill();
         ctx.fillRect(hx + 1.0, -1.1, 1.6, 2.2);
+      } else if (look.hat === 'monkey') { // the winter monkey cap: wool over the head and ears, the face in its opening
+        ctx.fillStyle = look.hatColor || '#7a1f2b'; ell(ctx, hx - 0.1, 0, 2.2, 2.2); ctx.fill(); outline(ctx);
+        ctx.fillStyle = skin; ell(ctx, hx + 1.25, 0, 0.8, 1.05); ctx.fill();
+        ctx.fillStyle = U.shade(look.hatColor || '#7a1f2b', 0.75); ell(ctx, hx - 0.4, 0, 0.6, 0.6); ctx.fill();
       }
     }
     ctx.restore();
+  }
+
+  /** winter in the game's calendar (Dec-Feb), and its cold mornings and evenings */
+  function winterChill() {
+    const b = (N.clock && N.clock.baseDate) || [2003, 0, 14];
+    const m = new Date(Date.UTC(b[0], b[1], b[2] + ((N.clock && N.clock.day) || 0))).getUTCMonth();
+    if (m !== 11 && m !== 0 && m !== 1) return 0;
+    const t = N.clock && isFinite(N.clock.minutes) ? N.clock.minutes : 720;
+    return t < 10 * 60 || t > 18 * 60 ? 1 : 0.35;
+  }
+  /**
+   * The 2003 details on a look, in place (randomLook and traffic.js makeLook both end here): a moustache on most
+   * grown men, checked and full-sleeve shirts, kurtas, the safari suit, the old man's white dhoti, gajra in the
+   * plaits, a sweater (and the old man's monkey cap) on a winter morning. role: makeLook's role or the kind;
+   * r: {next()} (seeded callers stay deterministic). Fields: moustache, checks (line colour), sleeves 'long',
+   * kurta, safari, dhoti (+ lungi: its white, border: its edge; the legs wrapped), gajra, sweater (colour), hat 'monkey'.
+   */
+  function dress(L, role, r) {
+    if (!L || L.cast && L.cast !== 'amb') return L; // (the named cast keep their own looks)
+    r = r || { next: Math.random };
+    const q = () => r.next(), pick = (a) => a[Math.floor(q() * a.length)];
+    const kind = L.kind || 'man', man = kind === 'man' || kind === 'uncle' || kind === 'lungi' || kind === 'police';
+    const grown = man && L.girl == null;
+    if (grown && !L.beard && q() < (role === 'youth' || role === 'college' ? 0.55 : 0.8)) L.moustache = true;
+    if (kind === 'man' && !L.lanyardDot && !L.stripes && role !== 'police' && role !== 'porter' && role !== 'elder' && role !== 'worker') {
+      if (role === 'old' && q() < 0.35) { // white dhoti and a white shirt or kurta, a gold border
+        L.lungi = '#f4f2ea'; L.dhoti = true; L.border = pick(['#c9a227', '#7a1f2b', '#2a5a3a']); L.shirt = '#f4f2ea'; // (kind stays 'man')
+      } else if ((role === 'uncle' || role === 'office') && q() < 0.12) { // the safari suit: one colour, half sleeves, pockets
+        L.safari = true; L.shirt = L.pants = pick(SAFARI);
+      } else if (role === 'old' || role === 'elder' || role === 'pilgrim' || role === 'college' && q() < 0.25 || (role === 'man' || role === 'uncle') && q() < 0.18) {
+        L.kurta = true; if (role === 'college') L.pants = pick(['#3a5070', '#2a3a5a']); // kurta and jeans
+      } else if (q() < (role === 'uncle' || role === 'youth' || role === 'man' ? 0.45 : 0.3)) L.checks = pick(CHECK);
+      if (role === 'office' || role === 'elder' || L.kurta && q() < 0.6 || q() < 0.22) L.sleeves = 'long';
+    }
+    if ((kind === 'woman' || kind === 'saree' || L.girl && kind !== 'kid') && q() < 0.4) L.gajra = true;
+    if (kind === 'aunty' && q() < 0.3) L.gajra = true;
+    // winter: a sweater over the shirt (a cardigan over the saree), the old man's monkey cap
+    const chill = winterChill();
+    if (chill && kind !== 'burqa' && kind !== 'police' && !L.towel && q() < chill * (role === 'old' || role === 'elder' ? 0.7 : kind === 'kid' || kind === 'student' ? 0.5 : 0.3)) {
+      L.sweater = kind === 'student' ? (L.pants || '#22305a') : pick(WOOL);
+      if ((role === 'old' || kind === 'uncle' || L.dhoti) && !L.hat && !L.cap && q() < 0.55) { L.hat = 'monkey'; L.hatColor = pick(WOOL); }
+    }
+    return L;
   }
 
   function randomLook(rng, kind) {
@@ -425,16 +501,16 @@
     const pick = (a) => a[Math.floor(r.next() * a.length)];
     kind = kind || pick(['man', 'man', 'woman', 'kid', 'uncle', 'aunty', 'saree', 'burqa', 'lungi', 'student', 'man']);
     const look = { kind, skin: pick(SKIN), hair: r.next() < 0.12 ? '#6a6662' : '#1a1412', shirt: pick(SHIRT), pants: pick(PANTS) };
-    if (kind === 'saree' || kind === 'aunty') { look.saree = pick(SAREE); look.border = pick(['#f2c230', '#e8c060', '#d8402a', '#efe9dc']); }
+    if (kind === 'saree' || kind === 'aunty') { look.saree = pick(SAREE); look.border = pick(BORDER); }
     if (kind === 'woman') { look.shirt = pick(SAREE); look.pants = pick(['#efe9dc', '#f2c230', '#2a5cb8', look.shirt]); look.dupatta = pick(SAREE); }
     if (kind === 'lungi' || kind === 'uncle') { look.lungi = pick(LUNGI); if (kind === 'uncle') look.hair = r.next() < 0.5 ? '#8a8680' : '#1a1412'; }
     if (kind === 'kid') { look.pants = pick(['#7a6a4a', '#2a3a6a', '#5a4a3a']); if (r.next() < 0.4) look.stripes = pick(SHIRT); if (r.next() < 0.15) look.cap = 'cricket'; }
     if (kind === 'student') { look.shirt = '#f2f0ea'; look.pants = pick(['#2a3a6a', '#7a6a4a', '#3a5a3a']); look.girl = r.next() < 0.45; look.bag = pick(['#2a5cb8', '#b22b2b', '#3a8a3a', '#7a3a8a']); }
     if (kind === 'man' && r.next() < 0.15) look.cap = 'topi';
-    return look;
+    return dress(look, kind === 'uncle' ? 'lungi' : kind, r);
   }
 
-  N.people = { draw: drawPerson, randomLook, SKIN, SHIRT, SAREE, SCALE: PEOPLE_SCALE };
+  N.people = { draw: drawPerson, randomLook, dress, SKIN, SHIRT, SAREE, CHECK, WOOL, SCALE: PEOPLE_SCALE };
 
   /* ======================================================== interact */
   // Systems either register persistent interactables (shops, doors, NPC entities) or
@@ -721,8 +797,10 @@
       this.mode = 'drive'; this.x = v0.x; this.y = v0.y; this.vx = v0.vx || 0; this.vy = v0.vy || 0;
       if (pedal) {
         const thr = Math.max(0, +v0.throttle || +(v0.ctl && v0.ctl.throttle) || 0);
-        if (thr > 0.05 && !this.god) { this.energy -= dt * TUNE.pedalDrain * thr; drainKey = 'pedal'; }
-        else this.energy += dt * TUNE.pedalRecover;
+        // (uphill the pedals get heavy; freewheeling downhill rests the legs: terrain.js)
+        const gr = N.terrain && N.terrain.ready ? (v0.grade || 0) : 0, upK = N.terrain ? N.terrain.TUNE.pedalUp : 0;
+        if (thr > 0.05 && !this.god) { this.energy -= dt * TUNE.pedalDrain * thr * (1 + upK * Math.max(0, gr)); drainKey = 'pedal'; }
+        else this.energy += dt * TUNE.pedalRecover * (gr < -0.04 ? 1.5 : 1);
         if (this.energy <= 0) { this.energy = 0; if (!this.legsGone) { this.legsGone = true; if (N.hud) N.hud.toast('Legs gone! *Saans phool gayi!*', 2000); } }
         if (this.legsGone && this.energy >= TUNE.exhaustedUntil) this.legsGone = false;
       } else { this.energy += dt * TUNE.recoverRide; this.legsGone = false; drainKey = 'ride'; }
@@ -772,8 +850,12 @@
     const wantRun = canControl && inp.down('run') && mag > 0.15 && !noRun;
     if (this.exhausted && this.energy > TUNE.exhaustedUntil) this.exhausted = false;
     const running = wantRun && !this.exhausted && this.energy > 0;
+    // the ground's rise and fall along where he is going (terrain.js): slower and tiring uphill, quicker down
+    const TRN = N.terrain && N.terrain.ready ? N.terrain : null;
+    const slopeMul = TRN && mag > 0.05 ? TRN.walkMul(this.x, this.y, mx, my) : 1;
+    const upG = TRN && mag > 0.05 ? Math.max(0, TRN.gradeAt(this.x, this.y, Math.atan2(my, mx))) : 0;
     if (running && !this.god) {
-      this.energy -= dt * TUNE.runDrain * (S.sugar ? 0.7 : 1); this.restT = 0;
+      this.energy -= dt * TUNE.runDrain * (S.sugar ? 0.7 : 1) * (1 + (TRN ? TRN.TUNE.runDrainUp : 0) * upG); this.restT = 0;
       if (this.energy <= 0) { this.energy = 0; this.exhausted = true; if (N.hud) N.hud.toast('*Saans phool gayi!*', 1800); N.emit('player:exhausted', this); }
     } else {
       this.restT += dt;
@@ -788,7 +870,7 @@
     if (very) mul *= 0.9;
     if (S.coma) mul *= 0.9;
     if (running) { if (S.knee) mul *= 0.9; if (hungry) mul *= 0.9; }
-    const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul;
+    const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul * slopeMul;
     const tvx = mx * top * mag, tvy = my * top * mag;
     const cur = Math.hypot(this.vx, this.vy), tgt = top * mag, AC = TUNE.accel;
     const a = 1 - Math.exp(-dt * (mag <= 0.05 ? AC.stop : tgt > cur + 2 ? (running ? AC.run : AC.go) : AC.turn));

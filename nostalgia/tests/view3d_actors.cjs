@@ -766,7 +766,7 @@ async function desktop(browser) {
     N.dialogue.bark(e, 'Arre, kya re!', { secs: 5 });
     await fr(); await fr(); await fr();
     const el = document.querySelector('#barks .bark');
-    const head = N.view3d.project(e.x, e.y, 9.4 * N.view3dActors.lookSpec(e.look, e.id).size + 2.4);
+    const head = N.view3d.project(e.x, e.y, N.view3d.elevation(e) + 9.4 * N.view3dActors.lookSpec(e.look, e.id).size + 2.4); // (on the ground under him: the terrain)
     if (el) { const r = el.getBoundingClientRect(); out.bark = { vis: getComputedStyle(el).visibility, bottom: Math.round(r.bottom), cx: Math.round(r.left + r.width / 2), head: [Math.round(head.x), Math.round(head.y)] }; }
     out.tracked = N.view3dActors.stats().bark3d;
     N.entities.remove(e);

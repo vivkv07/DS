@@ -273,6 +273,22 @@
     return treeRec(id) || treeRec('tree_neem');
   }
   const hash = (x, y) => (((Math.round(x) * 73856093) ^ (Math.round(y) * 19349663)) >>> 0);
+  /** [terrain] the ground a structure stands on, as view3d.js sitOnTerrain lifts it (a footprint's low corner, or the
+   *  ground at its centre) */
+  function groundOf(H, q) {
+    if (!q || !H.terrainAt) return 0;
+    if (q.x != null && q.w != null && q.d != null && H.terrainBase) return H.terrainBase(q.x, q.y, q.x + q.w, q.y + q.d);
+    return H.terrainAt(q.cx != null ? q.cx : q.x, q.cy != null ? q.cy : q.y);
+  }
+  /** run fn (which adds to the chunk job's lists / builder) and raise what it added by dy */
+  const LIFT_LISTS = ['trunks', 'blobs', 'crowns', 'rocks', 'glows'];
+  function liftAdded(J, dy, fn) {
+    const n0 = J.gb ? J.gb.n : 0, lens = LIFT_LISTS.map((k) => (J[k] ? J[k].length : 0));
+    fn();
+    if (!dy) return;
+    LIFT_LISTS.forEach((k, i) => { const A = J[k]; if (A) for (let j = lens[i]; j < A.length; j++) A[j][1] += dy; });
+    if (J.gb) { const P = J.gb.P; for (let k = n0; k < J.gb.n; k++) P[k * 3 + 1] += dy; }
+  }
   /** per chunk: called by the core for the first tree of the chunk job; builds the whole chunk's trees */
   function buildTrees(T, s, H, gb, J) {
     if (J._m3dTrees) return;
@@ -281,6 +297,9 @@
     const VS = H.VS || 1.5;
     const byModel = new Map();
     const fallback = [];
+    // [terrain] the core lifts what this returns (and adds) by the ground under the chunk's first tree (s): every
+    // other tree takes the difference to the ground under it
+    const t0 = groundOf(H, s);
     for (const q of list) {
       const seed = hash(q.x, q.y);
       const rec = treeModelFor(q, seed);
@@ -293,9 +312,9 @@
       const tint = 0.9 + ((seed >>> 4) % 100) / 500;
       let arr = byModel.get(rec);
       if (!arr) byModel.set(rec, (arr = []));
-      arr.push({ x: q.x - J.ox, z: q.y - J.oz, wx: q.x, wz: q.y, sx, sy: sc, yaw, tint, size: h3, lod: -1 });
+      arr.push({ x: q.x - J.ox, z: q.y - J.oz, wx: q.x, wz: q.y, sx, sy: sc, yaw, tint, size: h3, lod: -1, dy: groundOf(H, q) - t0 });
     }
-    for (const q of fallback) proceduralTree(J, q, H);
+    for (const q of fallback) liftAdded(J, groundOf(H, q) - t0, () => proceduralTree(J, q, H));
     if (!byModel.size) return;
     const g = new THREE.Group();
     g.name = 'm3d-trees';
@@ -318,7 +337,7 @@
       });
       const mats = arr.map((t) => {
         q4.setFromAxisAngle(up, t.yaw);
-        p.set(t.x, 0, t.z); sc3.set(t.sx, t.sy, t.sx);
+        p.set(t.x, t.dy, t.z); sc3.set(t.sx, t.sy, t.sx);
         m4.compose(p, q4, sc3);
         return m4.toArray(new Float32Array(16));
       });
@@ -415,11 +434,12 @@
     J._m3dRocks = true;
     const recs = ROCK_IDS.map((id) => mdOf(id)).filter(Boolean);
     const list = (J.list || []).filter((q) => q && q.t === 'rock');
-    if (!recs.length || !OPT.rocks) { for (const q of list) proceduralRock(J, q); return; }
+    const t0 = groundOf(H, s); // [terrain] as for the trees: each boulder on the ground under it
+    if (!recs.length || !OPT.rocks) { for (const q of list) liftAdded(J, groundOf(H, q) - t0, () => proceduralRock(J, q)); return; }
     const per = recs.map(() => []);
     const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
     for (const s2 of list) {
-      const x = s2.x - J.ox, z = s2.y - J.oz;
+      const x = s2.x - J.ox, z = s2.y - J.oz, dy = groundOf(H, s2) - t0;
       const parts = s2.parts || [[0, 0, s2.r, 0, s2.h]];
       let k = 0;
       for (const pt of parts) {
@@ -429,7 +449,7 @@
         const md = recs[wide];
         const sz = md.man.size || [10, 10, 10];
         q4.setFromAxisAngle(up, (seed % 628) / 100);
-        p.set(x + pt[0], h0 > 0 ? h0 * 1.15 : -hh * 0.12, z + pt[1]);
+        p.set(x + pt[0], (h0 > 0 ? h0 * 1.15 : -hh * 0.12) + dy, z + pt[1]);
         sc.set((2 * r) / Math.max(sz[0], 0.1), hh / Math.max(sz[2], 0.1), (2 * r) / Math.max(sz[1], 0.1));
         m4.compose(p, q4, sc);
         per[wide].push(m4.clone());

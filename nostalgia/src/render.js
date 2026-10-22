@@ -781,6 +781,10 @@
     return ['#ffffff', 0];
   }
 
+  // night: the dark lightens a little where there is no lamp at all (the eye adapting), the lamps cut pools through it,
+  // and the player is never lost: a soft pool of his own round him, stronger when no lamp is near (NIGHT2.lit: how lit
+  // his spot is, smoothed), and a faint cool rim of moonlight on him
+  const NIGHT2 = { lit: 0, base: 0.66, darkLift: 0.07, lampK: 1.15, me: [0.55, 0.9], meR: [58, 82], rim: 0.16 };
   function drawGradeAndNight(ctx) {
     const W = R.W, H = R.H;
     const light = N.clock.light();
@@ -801,19 +805,29 @@
     if (night <= 0.01) { R.lights.length = 0; return; }
     if (!lightCanvas) { lightCanvas = makeCanvas(Math.ceil(W / LIGHT_DIV), Math.ceil(H / LIGHT_DIV)); lightCtx = lightCanvas.getContext('2d'); }
     const lc = lightCtx, LW = lightCanvas.width, LH = lightCanvas.height;
+    const lights = R.lights, P = N.player, me = P && isFinite(P.x) && !P.hidden && N.state.mode !== 'title';
+    let litP = 0;
+    if (me) for (let i = 0; i < lights.length; i++) { const L = lights[i], r = (L.r || 40) * NIGHT2.lampK, d = Math.hypot(L.x - P.x, L.y - P.y); if (d < r) litP += U.clamp(L.intensity == null ? 1 : L.intensity, 0, 1) * (1 - d / r); }
+    NIGHT2.lit += (litP - NIGHT2.lit) * 0.08;
+    const dark = 1 - U.clamp(NIGHT2.lit / 0.8, 0, 1);
+    R.nightLit = NIGHT2.lit;
     lc.globalCompositeOperation = 'source-over';
     lc.clearRect(0, 0, LW, LH);
-    lc.fillStyle = 'rgba(10,16,52,' + (0.76 * night).toFixed(3) + ')';
+    lc.fillStyle = 'rgba(10,16,52,' + ((NIGHT2.base - NIGHT2.darkLift * dark) * night).toFixed(3) + ')';
     lc.fillRect(0, 0, LW, LH);
     lc.globalCompositeOperation = 'destination-out';
     const mask = blob('mask');
-    const lights = R.lights;
     for (let i = 0; i < lights.length; i++) {
       const L = lights[i];
       const k = Z * (1 + (L.h || 0) * R.PERSP);
-      const X = (cx + (L.x - camX) * k) / LIGHT_DIV, Y = (cy + (L.y - camY) * k) / LIGHT_DIV, rr = (L.r || 40) * k / LIGHT_DIV;
+      const X = (cx + (L.x - camX) * k) / LIGHT_DIV, Y = (cy + (L.y - camY) * k) / LIGHT_DIV, rr = (L.r || 40) * NIGHT2.lampK * k / LIGHT_DIV;
       if (X + rr < 0 || Y + rr < 0 || X - rr > LW || Y - rr > LH) continue;
       lc.globalAlpha = U.clamp(L.intensity == null ? 1 : L.intensity, 0, 1);
+      lc.drawImage(mask, X - rr, Y - rr, rr * 2, rr * 2);
+    }
+    if (me) { // his own pool
+      const X = (cx + (P.x - camX) * Z) / LIGHT_DIV, Y = (cy + (P.y - camY) * Z) / LIGHT_DIV, rr = (NIGHT2.meR[0] + (NIGHT2.meR[1] - NIGHT2.meR[0]) * dark) * Z / LIGHT_DIV;
+      lc.globalAlpha = NIGHT2.me[0] + (NIGHT2.me[1] - NIGHT2.me[0]) * dark;
       lc.drawImage(mask, X - rr, Y - rr, rr * 2, rr * 2);
     }
     lc.globalAlpha = 1;
@@ -832,6 +846,7 @@
       ctx.globalAlpha = night * 0.7 * U.clamp(L.intensity == null ? 1 : L.intensity, 0, 1);
       ctx.drawImage(blob(L.color || '#ffb050'), X - rr, Y - rr, rr * 2, rr * 2);
     }
+    if (me) { const X = cx + (P.x - camX) * Z, Y = cy + (P.y - camY) * Z, rr = 26 * Z; ctx.globalAlpha = night * NIGHT2.rim * (0.6 + 0.4 * dark); ctx.drawImage(blob('#9aaae0'), X - rr, Y - rr, rr * 2, rr * 2); }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     lights.length = 0;

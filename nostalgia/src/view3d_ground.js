@@ -68,6 +68,11 @@
   const N = window.N;
   if (!N || !N.view3d || !N.view3d.setGroundProvider) return;
   const V = N.view3d;
+  // [terrain] the ground's real rise and fall (terrain.js): the terrain mesh and every road / kerb / footpath vertex
+  // stand on it; road polygons are cut on a TGRID world grid first so long ones follow the slope
+  const terrH = (x, y) => { const T = N.terrain; return T && T.ready ? T.heightAt(x, y) : 0; };
+  const terrOn = () => !!(N.terrain && N.terrain.ready);
+  const TGRID = 32, TSEG = 16;
   const TAU = Math.PI * 2;
   const now = () => performance.now();
 
@@ -1238,6 +1243,7 @@
       this.cap = 4096; this.n = 0; this.icap = 8192; this.ni = 0;
       this.P = new Float32Array(this.cap * 3); this.Nn = new Int8Array(this.cap * 3); this.C = new Uint8Array(this.cap * 3);
       this.UV = new Float32Array(this.cap * 2); this.GEO = new Float32Array(this.cap * 4); this.MK = new Float32Array(this.cap * 4); this.ST = new Float32Array(this.cap * 4);
+      this.TER = new Float32Array(this.cap); // [terrain] the ground's height under each vertex (the pothole depth trick)
       this.I = new Uint32Array(this.icap);
       this.raised = []; // [x0, z0, x1, z1, ... polygon footprints, h] for groundHeightAt
     }
@@ -1247,7 +1253,7 @@
       if (this.n + nv > this.cap) {
         let c = this.cap; while (this.n + nv > c) c *= 2;
         const g = (A, k) => { const B = new A.constructor(c * k); B.set(A); return B; };
-        this.P = g(this.P, 3); this.Nn = g(this.Nn, 3); this.C = g(this.C, 3); this.UV = g(this.UV, 2); this.GEO = g(this.GEO, 4); this.MK = g(this.MK, 4); this.ST = g(this.ST, 4);
+        this.P = g(this.P, 3); this.Nn = g(this.Nn, 3); this.C = g(this.C, 3); this.UV = g(this.UV, 2); this.GEO = g(this.GEO, 4); this.MK = g(this.MK, 4); this.ST = g(this.ST, 4); this.TER = g(this.TER, 1);
         this.cap = c;
       }
       if (this.ni + ni > this.icap) { let c = this.icap; while (this.ni + ni > c) c *= 2; const B = new Uint32Array(c); B.set(this.I); this.I = B; this.icap = c; }
@@ -1257,13 +1263,28 @@
       let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
       for (let i = 0; i < n; i++) { const x = v[i * VF], z = v[i * VF + 2]; if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (z < mnz) mnz = z; if (z > mxz) mxz = z; }
       if (mxx < this.x0 || mnx > this.x1 || mxz < this.z0 || mnz > this.z1) return;
-      if (mnx >= this.x0 && mxx <= this.x1 && mnz >= this.z0 && mxz <= this.z1) { this.write(v, n, cst); return; }
+      if (mnx >= this.x0 && mxx <= this.x1 && mnz >= this.z0 && mxz <= this.z1) { this.split(v, n, cst); return; }
       let a = v, na = n;
       a = this.clip(a, na, 0, this.x0, 1); na = a.length / VF; if (na < 3) return;
       a = this.clip(a, na, 0, this.x1, -1); na = a.length / VF; if (na < 3) return;
       a = this.clip(a, na, 2, this.z0, 1); na = a.length / VF; if (na < 3) return;
       a = this.clip(a, na, 2, this.z1, -1); na = a.length / VF; if (na < 3) return;
-      this.write(a, na, cst);
+      this.split(a, na, cst);
+    }
+    /** [terrain] write a convex polygon in pieces of a TGRID world grid (each piece's corners on the terrain) */
+    split(v, n, cst) {
+      let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
+      for (let i = 0; i < n; i++) { const x = v[i * VF], z = v[i * VF + 2]; if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (z < mnz) mnz = z; if (z > mxz) mxz = z; }
+      if (!terrOn() || (Math.floor(mnx / TGRID) === Math.floor((mxx - 1e-6) / TGRID) && Math.floor(mnz / TGRID) === Math.floor((mxz - 1e-6) / TGRID))) { this.write(v, n, cst); return; }
+      for (let xa = Math.floor(mnx / TGRID) * TGRID; xa < mxx; xa += TGRID) {
+        let a = this.clip(v, n, 0, xa, 1), na = a.length / VF; if (na < 3) continue;
+        a = this.clip(a, na, 0, xa + TGRID, -1); na = a.length / VF; if (na < 3) continue;
+        for (let za = Math.floor(mnz / TGRID) * TGRID; za < mxz; za += TGRID) {
+          let b = this.clip(a, na, 2, za, 1), nb = b.length / VF; if (nb < 3) continue;
+          b = this.clip(b, nb, 2, za + TGRID, -1); nb = b.length / VF; if (nb < 3) continue;
+          this.write(b, nb, cst);
+        }
+      }
     }
     clip(v, n, ax, lim, sg) {
       const out = [];
@@ -1294,7 +1315,8 @@
       const base = this.n;
       for (let i = 0; i < n; i++) {
         const o = i * VF, k = this.n++;
-        this.P[k * 3] = v[o] - this.x0; this.P[k * 3 + 1] = v[o + 1]; this.P[k * 3 + 2] = v[o + 2] - this.z0;
+        const th = terrH(v[o], v[o + 2]);
+        this.P[k * 3] = v[o] - this.x0; this.P[k * 3 + 1] = v[o + 1] + th; this.P[k * 3 + 2] = v[o + 2] - this.z0; this.TER[k] = th;
         let nx = v[o + 3], ny = v[o + 4], nz = v[o + 5]; const nl = Math.hypot(nx, ny, nz) || 1;
         this.Nn[k * 3] = Math.round(nx / nl * 127); this.Nn[k * 3 + 1] = Math.round(ny / nl * 127); this.Nn[k * 3 + 2] = Math.round(nz / nl * 127);
         this.C[k * 3] = c.r; this.C[k * 3 + 1] = c.g; this.C[k * 3 + 2] = c.b;
@@ -1309,6 +1331,8 @@
         else { this.I[this.ni++] = base; this.I[this.ni++] = base + i; this.I[this.ni++] = base + i + 1; }
       }
     }
+    /** [terrain] the ground's range over this chunk (bounds) */
+    terrRange() { let lo = Infinity, hi = -Infinity; for (let a = 0; a <= 4; a++) for (let b = 0; b <= 4; b++) { const h = terrH(this.x0 + CHS * a / 4, this.z0 + CHS * b / 4); lo = Math.min(lo, h); hi = Math.max(hi, h); } return [lo, hi]; }
     /** record a raised footprint (convex, world xz) at height h for groundHeightAt */
     raise(pts, h) {
       let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
@@ -1326,11 +1350,13 @@
       g.setAttribute('aGeo', new THREE.BufferAttribute(this.GEO.slice(0, n * 4), 4));
       g.setAttribute('aMk', new THREE.BufferAttribute(this.MK.slice(0, n * 4), 4));
       g.setAttribute('aSt', new THREE.BufferAttribute(this.ST.slice(0, n * 4), 4));
+      g.setAttribute('aTer', new THREE.BufferAttribute(this.TER.slice(0, n), 1));
       // (typed-array conversion, not Uint16Array.from's iterator; bounds from the chunk box, not a
       // pass over every vertex: both were long single slices on big chunks)
       const idx = n > 65535 ? this.I.slice(0, this.ni) : new Uint16Array(this.I.subarray(0, this.ni));
       g.setIndex(new THREE.BufferAttribute(idx, 1));
-      g.boundingBox = new THREE.Box3(new THREE.Vector3(-8, -3, -8), new THREE.Vector3(CHS + 8, 6, CHS + 8));
+      const tr = this.terrRange();
+      g.boundingBox = new THREE.Box3(new THREE.Vector3(-8, tr[0] - 3, -8), new THREE.Vector3(CHS + 8, tr[1] + 6, CHS + 8));
       g.boundingSphere = g.boundingBox.getBoundingSphere(new THREE.Sphere());
       return g;
     }
@@ -2289,6 +2315,7 @@ vec3 ngWaterCol(vec3 lit, vec3 P, vec3 nrm, float t, float deep){
   const VERT_COMMON = 'varying vec3 vWP;\nuniform vec3 uCamPos;\n';
   function commonUniforms(shader, ud) {
     const U = I.UNI;
+    const LG = (I && I.H && I.H.lamps) || V.lamps; if (LG) LG.apply(shader); // the street lamps' pools on the road / ground at night
     shader.uniforms.uNight = U.uNight; shader.uniforms.uTime = U.uTime; shader.uniforms.uSunDir = U.uSunDir;
     shader.uniforms.uSunCol = U.uSunCol; shader.uniforms.uZen = U.uZen; shader.uniforms.uHor = U.uHor;
     shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain; shader.uniforms.uCamPos = GU.uCamPos; shader.uniforms.uGain = GU.uGain;
@@ -2426,7 +2453,7 @@ if (ngShine > 0.01) {
     const ud = this.userData;
     commonUniforms(shader, ud);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\n' + VERT_COMMON + 'attribute vec2 aRd;\nattribute vec4 aGeo;\nattribute vec4 aMk;\nattribute vec4 aSt;\nvarying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n')
+      .replace('#include <common>', '#include <common>\n' + VERT_COMMON + 'attribute vec2 aRd;\nattribute vec4 aGeo;\nattribute vec4 aMk;\nattribute vec4 aSt;\nattribute float aTer;\nvarying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n')
       .replace('#include <project_vertex>', '#include <project_vertex>\n\tvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n\tvRd = aRd; vGeo = aGeo; vMk = aMk; vSt = aSt;\n' + POT_DEPTH);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_PARS + 'varying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n' + GLSL_NOISE + GLSL_WATER + ROAD_FUNCS)
@@ -2440,8 +2467,8 @@ if (ngShine > 0.01) {
   // anything standing on the road, while keeping their real shape for shading.
   const POT_DEPTH = `
 \tif (aSt.x > 4.5 && aSt.x < 6.5) gl_Position.z -= 3e-6 * gl_Position.w; // decals (paint, tar patches): never z-fight
-\tif (aSt.w > 0.001 && uCamPos.y > ${Y_ROAD.toFixed(3)} + 0.05) {
-\t\tfloat ngK = (uCamPos.y - ${Y_ROAD.toFixed(3)}) / max(uCamPos.y - vWP.y, 1e-3);
+\tif (aSt.w > 0.001 && uCamPos.y > aTer + ${Y_ROAD.toFixed(3)} + 0.05) {
+\t\tfloat ngK = (uCamPos.y - aTer - ${Y_ROAD.toFixed(3)}) / max(uCamPos.y - vWP.y, 1e-3);
 \t\tvec4 ngC = projectionMatrix * viewMatrix * vec4(uCamPos + (vWP - uCamPos) * ngK, 1.0);
 \t\tgl_Position.z = ngC.z / ngC.w * gl_Position.w;
 \t}
@@ -2742,6 +2769,19 @@ if (ngShine > 0.01) {
   }
   // shared terrain plane (one per chunk size; vUv as the core's ground plane for the aux texture)
   let PLANE = null;
+  /** [terrain] the chunk's ground plane: TSEG x TSEG quads with every vertex on the terrain (shared flat plane without it) */
+  const dropGeo = (m) => { if (m && m.geometry && !(m.geometry.userData && m.geometry.userData.shared)) m.geometry.dispose(); };
+  function terrainPlane(ch) {
+    if (!terrOn()) {
+      if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
+      return PLANE;
+    }
+    const g = new THREE.PlaneGeometry(CHS, CHS, TSEG, TSEG); g.rotateX(-Math.PI / 2); g.translate(CHS / 2, 0, CHS / 2);
+    const P = g.attributes.position, x0 = ch.x0 != null ? ch.x0 : ch.ci * CHS, z0 = ch.y0 != null ? ch.y0 : ch.cj * CHS;
+    for (let i = 0; i < P.count; i++) P.setY(i, terrH(x0 + P.getX(i), z0 + P.getZ(i)));
+    g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+    return g;
+  }
   function stepJob(job, deadline) {
     const ch = job.ch;
     const t0 = now();
@@ -2786,11 +2826,10 @@ if (ngShine > 0.01) {
       if (job.surf) {
         if (job.what === 'map' && G.surfTex && G.surfTex.image.data.length === job.surf.length) { G.surfTex.image.data.set(job.surf); G.surfTex.needsUpdate = true; }
         else {
-          if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); G.terrain = null; }
+          if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); dropGeo(G.terrain); G.terrain = null; }
           if (G.surfTex) G.surfTex.dispose();
           G.surfTex = job.tex || dataTex(job.surf, job.sn, true); G.sn = job.sn; job.tex = null;
-          if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
-          const tm = new THREE.Mesh(PLANE, newTerrainMat(ch, G));
+          const tm = new THREE.Mesh(terrainPlane(ch), newTerrainMat(ch, G));
           tm.name = 'ground-terrain'; tm.receiveShadow = true; tm.matrixAutoUpdate = false; tm.updateMatrix(); tm.renderOrder = 2;
           G.terrain = tm; ch.group.add(tm);
           if (G.road) G.road.material.userData.surf.value = G.surfTex;
@@ -2825,7 +2864,7 @@ if (ngShine > 0.01) {
     if (ACTIVE && ACTIVE.ch === ch) ACTIVE = null;
     if (!G) return;
     dropProv(ch);
-    if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); }
+    if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); dropGeo(G.terrain); }
     if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); }
     if (G.surfTex) G.surfTex.dispose();
     ch.ng = null;
@@ -2884,10 +2923,12 @@ if (ngShine > 0.01) {
     return -potFrac(p, x, y) * potShape(p).dip;
   }
   function groundHeightAt(x, y) {
-    if (!provider.enabled || !I || !isFinite(x) || !isFinite(y)) return 0;
+    if (!isFinite(x) || !isFinite(y)) return 0;
+    const t = terrH(x, y);
+    if (!provider.enabled || !I) return t;
     const r = raisedAt(x, y);
-    if (r > 0) return r;
-    return potholeDip(x, y);
+    if (r > 0) return t + r;
+    return t + potholeDip(x, y);
   }
   function entityHeight(x, y, e) {
     if (e && e.kind === 'vehicle' && isFinite(e.angle)) {
@@ -2971,8 +3012,7 @@ if (ngShine > 0.01) {
     }
     const geo = B.build();
     const T = { surfTex: provSurf(), sn: 2 };
-    if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
-    const tm = new THREE.Mesh(PLANE, newTerrainMat(ch, T));
+    const tm = new THREE.Mesh(terrainPlane(ch), newTerrainMat(ch, T));
     tm.name = 'ground-prov-terrain'; tm.receiveShadow = true; tm.matrixAutoUpdate = false; tm.updateMatrix(); tm.renderOrder = 2;
     ch.group.add(tm);
     let rm = null;
@@ -2988,7 +3028,7 @@ if (ngShine > 0.01) {
   function dropProv(ch) {
     const G = ch.ng, P = G && G.prov;
     if (!P) return;
-    ch.group.remove(P.terrain); P.terrain.material.dispose();
+    ch.group.remove(P.terrain); P.terrain.material.dispose(); dropGeo(P.terrain);
     if (P.road) { ch.group.remove(P.road); P.road.geometry.dispose(); P.road.material.dispose(); }
     G.prov = null;
   }

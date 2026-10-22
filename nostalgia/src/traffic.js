@@ -324,10 +324,12 @@
 
   /* ================================================================ looks */
   const P_SKIN = ['#8d5a3b', '#a0683f', '#b97a4f', '#c68b5e', '#7a4a30', '#d29a6a', '#9a6040'];
-  const SHIRT_PALE = ['#e8e0d0', '#dfe8f2', '#c8d8e8', '#efe6d0', '#d8e0c8', '#e8d8c8', '#f4f2ea', '#bcd0e0'];
-  const SHIRT_LOUD = ['#d8402a', '#2a5cb8', '#3a8a3a', '#f2c230', '#7a3a8a', '#2a8c82', '#c86a2a', '#e88aa8', '#8a2a2a', '#3a3a8a'];
-  const SAREE = ['#d8402a', '#2a8c82', '#f2c230', '#c03a8a', '#3a8a3a', '#f08a24', '#7a3a8a', '#e85a7a', '#2a5cb8', '#8a2a3a', '#3a6a3a', '#c8a020'];
+  // 2003: terry-cot pastels for the uncles; the maroon, bottle green, mustard, navy and rust of the young
+  const SHIRT_PALE = ['#e8e0d0', '#dfe8f2', '#c8d8e8', '#efe6d0', '#d8e0c8', '#e8d8c8', '#f4f2ea', '#bcd0e0', '#e8e2f0', '#d8e8e0'];
+  const SHIRT_LOUD = ['#c8402a', '#2a5cb8', '#3a7a4a', '#d8b040', '#6a3a7a', '#2a7c78', '#b8642a', '#d88aa0', '#7a1f2b', '#22305a', '#1f4a3a', '#a0482a', '#8ab4d8'];
+  const SAREE = ['#d8402a', '#2a8c82', '#f2c230', '#c03a8a', '#3a8a3a', '#f08a24', '#7a3a8a', '#e85a7a', '#2a5cb8', '#8a2a3a', '#3a6a3a', '#c8a020', '#8a1f3a', '#1f6a4a', '#e8742a', '#5a2a6a'];
   const PANTS = ['#3a3a4a', '#5a4a3a', '#2a3a5a', '#7a6a5a', '#4a4a4a', '#6a6a70'];
+  const JEANS = ['#3a5070', '#2a3a5a', '#46607e', '#2e3e56'];
   const LUNGI = ['#2a5cb8', '#3a8a3a', '#7a3a3a', '#efe9dc', '#5a3a8a', '#2a6a7a'];
   const UNIFORM = [['#f2f0ea', '#2a3a6a', '#2a3a6a'], ['#f2f0ea', '#7a6a4a', '#7a2a2a'], ['#f2f0ea', '#3a5a3a', '#3a5a3a'], ['#e8f0f8', '#2a4a8a', '#b22b2b'], ['#f4f2e8', '#5a2a3a', '#5a2a3a']];
   const RIBBON = ['#d8202a', '#2a5cb8', '#f2f0ea', '#3a8a3a'];
@@ -390,7 +392,7 @@
         break;
       }
       case 'youth': { // printed shirt, bell-ish jeans, side parting / puff
-        L.kind = 'man'; L.shirt = pick(SHIRT_LOUD); L.pants = pick(['#3a4a6a', '#2a3a5a', '#4a4a5a', '#6a5a4a']);
+        L.kind = 'man'; L.shirt = pick(SHIRT_LOUD); L.pants = rnd() < 0.6 ? pick(JEANS) : pick(['#4a4a5a', '#6a5a4a', '#c8b89a']);
         if (rnd() < 0.35) L.puff = true; else L.oiled = rnd() < 0.5;
         if (rnd() < 0.2) L.specs = '#2a2a36';
         if (rnd() < 0.15) { L.hat = 'backcap'; L.hatColor = pick(['#c03030', '#2a5cb8', '#f2f0ea']); }
@@ -398,7 +400,7 @@
         break;
       }
       case 'college': { // Osmania: jeans, kurtas, files to the chest
-        if (rnd() < 0.45) { L.kind = 'woman'; L.shirt = pick(SAREE); L.pants = pick(['#efe9dc', '#2a3a5a']); L.dupatta = pick(SAREE); }
+        if (rnd() < 0.45) { L.kind = 'woman'; L.shirt = pick(SAREE); L.pants = rnd() < 0.3 ? pick(JEANS) : pick(['#efe9dc', '#2a3a5a']); if (rnd() < 0.75) L.dupatta = pick(SAREE); } // (a kurti over jeans: the 2003 college look)
         else { L.kind = 'man'; L.shirt = pick(SHIRT_LOUD.concat(SHIRT_PALE)); L.pants = pick(['#3a4a6a', '#2a3a5a']); if (rnd() < 0.3) L.puff = true; }
         L.prop = 'notebook'; if (rnd() < 0.2) L.specs = true;
         spd = TUNE.pedSpd.student; lang = 'any';
@@ -448,6 +450,13 @@
         spd = TUNE.pedSpd.vendor + 8;
         break;
       }
+      case 'teen': { // a teenage girl in a half-saree (langa voni): the long skirt, a contrasting voni, a plait with jasmine
+        L.kind = 'saree'; L.girl = true; L.size = 0.9; L.saree = pick(SAREE); L.border = pick(['#f2c230', '#e8c060', '#efe9dc']);
+        L.blouse = pick(SAREE.filter((c) => c !== L.saree)); L.gajra = rnd() < 0.7;
+        if (rnd() < 0.4) L.prop = pick(['notebook', 'clothbag']);
+        spd = TUNE.pedSpd.woman; lang = 'te';
+        break;
+      }
       case 'police': {
         L.kind = 'man'; L.shirt = '#f4f2ea'; L.pants = '#a89060'; L.cap = 'police'; if (rnd() < 0.5) L.belly = true;
         spd = TUNE.pedSpd.police; lang = 'any';
@@ -460,6 +469,7 @@
         if (rnd() < 0.15) L.oiled = true;
       }
     }
+    if (N.people && N.people.dress) N.people.dress(L, role, { next: rnd }); // the 2003 details (entities.js)
     return { look: L, lang, spd: spd * rr(0.88, 1.1) * pace() };
   }
   /** Role by district style and time (systems §11.2 shares). */
@@ -478,7 +488,8 @@
       case 'osmania': w = { college: 40, man: 10, youth: 10, aunty: 6, uncle: 6, lungi: 4 }; break;
       default: w = { student: schoolT ? 18 : 3, kid: 14, uncle: 12, lungi: 6, aunty: 20, man: 10, youth: 8, old: 6, woman: 4 }; // colony
     }
-    if (night()) { w.kid = (w.kid || 0) * 0.2; w.student = 0; w.aunty = (w.aunty || 0) * 0.5; w.youth = (w.youth || 0) * 1.5; }
+    if (style === 'oldcity' || style === 'market' || style === 'rocky' || style === 'colony' || !style) w.teen = (w.teen || 0) + (style === 'market' ? 5 : 4);
+    if (night()) { w.kid = (w.kid || 0) * 0.2; w.student = 0; w.teen = (w.teen || 0) * 0.2; w.aunty = (w.aunty || 0) * 0.5; w.youth = (w.youth || 0) * 1.5; }
     if (did === 'ameerpet') w.college = (w.college || 0) + 25;
     return wpick(w) || 'man';
   }
@@ -561,6 +572,8 @@
       else if (c === 'auto') w = { arterial: 1.5, bund: 1.5, bridge: 1.5, street: 2, lane: 0.9 }[e.kind] || 1;
       else w = { arterial: 1, bund: 1.2, bridge: 1, street: 2, lane: 1.5 }[e.kind] || 1;
       if (C === A) w *= 0.02;
+      // a type's own idea of where it goes (TYPES[t].routeBias: the double-deckers stay on their beat)
+      if (v.T.routeBias) w *= v.T.routeBias(v, B, C, e);
       // keep traffic near the player (the rest despawns anyway)
       if (p && Math.hypot(C.x - p.x, C.y - p.y) > viewR() + TUNE.despawnVeh * 0.8) w *= 0.3;
       // straight on is a little more likely than turning
@@ -640,7 +653,7 @@
   /** Bus stops on edge A->B on the left of travel, from distance dMin up to short of B's junction mouth. */
   function addStops(v, A, B, e, g, off, dMin) {
     const tr = v.tr;
-    if (v.type !== 'bus' || tr.pursuit) return;
+    if (!(v.type === 'bus' || v.T.routeBus) || tr.pursuit) return;
     const st = RI.stops.get(e.id);
     if (!st) return;
     const forward = e.a === A.id, dMax = g.L - Math.max(20, Math.min(junctionR(B), g.L * 0.45) + 6);
@@ -939,7 +952,7 @@
     else if (q.f & F_EXIT) { tr.inBox = -1; tr.cleared = -1; }
     if (q.f & F_STOP && !q.dead && tr.stopDone !== q) {
       tr.stopT = q.stop || TUNE.busStop; tr.stopAt = q;
-      if (v.type === 'bus') busArrive(v, q);
+      if (v.type === 'bus' || v.T.routeBus) busArrive(v, q);
     }
   }
   function trySwerve(v, tr, ob, ux, uy) {
@@ -1011,7 +1024,7 @@
     const L = { kind: 'man', skin: skin(), hair: '#1a1412', shirt: pick(SHIRT_PALE), pants: pick(PANTS), cast: 'drv' };
     switch (type) {
       case 'auto': case 'yadagiri_auto': L.shirt = '#a08a5a'; L.pants = '#a08a5a'; if (rnd() < 0.5) L.towel = pick(['#c03030', '#efe6d0']); L.oiled = rnd() < 0.5; break;
-      case 'bus': case 'lorry': L.shirt = type === 'bus' ? '#a08a5a' : pick(SHIRT_LOUD); L.pants = type === 'bus' ? '#a08a5a' : pick(PANTS); break;
+      case 'bus': case 'decker_bus': case 'lorry': L.shirt = type !== 'lorry' ? '#a08a5a' : pick(SHIRT_LOUD); L.pants = type !== 'lorry' ? '#a08a5a' : pick(PANTS); break;
       case 'cycle': return makeLook(pick(night() ? ['man', 'lungi', 'youth'] : ['student', 'man', 'kid', 'lungi', 'youth', 'uncle', 'student']), style).look;
       case 'ladiescycle': { const r = makeLook(rnd() < 0.6 && !night() ? 'student' : 'woman', style).look; if (r.kind === 'student') { r.girl = true; r.plaits = pick(RIBBON); } if (r.kind === 'burqa') r.kind = 'woman'; return r; }
       // the black Hero roadster: grown men only (the saddle is miles up) - the milkman on his dawn round
@@ -1081,10 +1094,18 @@
     const kind = opts.kind;
     if (kind === 'lane') { mix.bus = 0; mix.lorry = 0; mix.ambassador = 0; mix.padmini = (mix.padmini || 0) * 0.3; mix.maruti800 = (mix.maruti800 || 0) * 0.4; }
     if (kind === 'arterial') { mix.rickshaw = (mix.rickshaw || 0) * 0.4; }
+    // types that keep to their own part of town: TYPES[t].spawnAt(x, y, style, kind, minutes) -> weight (the double-
+    // deckers round Charminar, Koti and Necklace Road), and TYPES[t].maxAlive caps how many of a type are about at once
+    for (const t in TY) {
+      const T2 = TY[t];
+      if (typeof T2.spawnAt === 'function') mix[t] = opts.x != null ? +T2.spawnAt(opts.x, opts.y, st, kind, m) || 0 : 0;
+      if (T2.maxAlive && mix[t] > 0 && countType(t) >= T2.maxAlive) mix[t] = 0;
+    }
     if (opts.x != null) for (const ev of activeEvents(opts.x, opts.y)) if (ev.idolLorries) { if (TY.peacock_lorry) mix.peacock_lorry = (mix.peacock_lorry || 0) + 40; else mix.lorry = (mix.lorry || 0) + 40; }
     for (const t in mix) if (!TY[t]) delete mix[t];
     return mix;
   }
+  function countType(t) { let n = 0; for (const v of T.vehicles) if (v.alive && v.type === t) n++; return n; }
   function pickType(style, e, x, y) {
     const t = wpick(typeWeights(style, { kind: e && e.kind, x, y })) || 'auto';
     return N.vehicles.TYPES[t] ? t : 'auto';
@@ -2733,7 +2754,7 @@
     },
     release,
     busAt(x, y, r) {
-      for (const v of T.vehicles) if (v.type === 'bus' && v.tr && v.tr.stopT != null && Math.hypot(v.x - x, v.y - y) < (r || 60)) return v;
+      for (const v of T.vehicles) if ((v.type === 'bus' || v.T.routeBus) && v.tr && v.tr.stopT != null && Math.hypot(v.x - x, v.y - y) < (r || 60)) return v;
       return null;
     },
     spawnVehicle(type, at) {

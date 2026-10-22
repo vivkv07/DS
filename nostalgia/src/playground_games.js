@@ -3120,7 +3120,8 @@
         if (!pp.el) { pp.el = document.createElement('div'); pp.el.className = 'pg-pop' + (pp.big ? ' big' : ''); pp.el.textContent = pp.text; pp.el.style.setProperty('--c', pp.col); host.appendChild(pp.el); }
         let x, y;
         if (three) {
-          const q = N.view3d.project(pp.x, pp.y, (pp.h + pp.t * 6) * 0.9);
+          if (pp.th == null) pp.th = V3L.H && V3L.H.terrainAt ? V3L.H.terrainAt(pp.x, pp.y) : 0; // [terrain] over the ground there
+          const q = N.view3d.project(pp.x, pp.y, pp.th + (pp.h + pp.t * 6) * 0.9);
           if (!q.visible) { pp.el.style.opacity = '0'; continue; }
           x = q.x; y = q.y;
         } else {
@@ -3136,8 +3137,14 @@
 
   /* ================================================================ 3D layer */
   const V3L = { grp: null, ball: null, bsh: null, stones: [], chalk: null, ring: null, arrow: null, rings: [], reticle: null, tele: null, fuse: null, T: null, H: null, ok: false };
+  // [terrain] a mark lying flat on the ground (its rotation just set in full) tilted onto the slope under (x, y)
+  function tilt(m, x, y) {
+    const tA = V3L.H.terrainAt, k = 6, gx = (tA(x + k, y) - tA(x - k, y)) / (2 * k), gy = (tA(x, y + k) - tA(x, y - k)) / (2 * k);
+    if (gx || gy) m.quaternion.premultiply(V3L.tq.setFromUnitVectors(V3L.up, V3L.tn.set(-gx, 1, -gy).normalize()));
+  }
   function v3Init(THREE, H) {
     V3L.T = THREE; V3L.H = H;
+    V3L.tq = new THREE.Quaternion(); V3L.tn = new THREE.Vector3(); V3L.up = new THREE.Vector3(0, 1, 0);
     // a material we recolour at run time is our own copy (H.mat's are cached and shared by every layer)
     const own = (hex, o) => { const m = H.mat(hex, o).clone(); m.userData = {}; return m; };
     const g = new THREE.Group(); g.name = 'pg-games'; g.visible = false;
@@ -3185,7 +3192,8 @@
     const f = N.view3d && N.view3d.focus ? N.view3d.focus() : N.player;
     if (!S || !f || rectDist(S.F, f.x, f.y) > 700) { g.visible = false; return; }
     g.visible = true;
-    const hAt = (x, y) => { try { return (H.heightAt ? H.heightAt(x, y) : 0) || 0; } catch (e) { return 0; } };
+    // [terrain] the ground's real height (H.terrainAt) under the solids' tops (H.heightAt; 0 on open ground)
+    const hAt = (x, y) => { try { return ((H.heightAt ? H.heightAt(x, y) : 0) || 0) + (H.terrainAt ? H.terrainAt(x, y) : 0); } catch (e) { return 0; } };
     const b = S.ball;
     const showBall = !b.hiddenBall && !(S.ended && !S.real);
     V3L.ball.visible = showBall; V3L.bsh.visible = showBall;
@@ -3222,8 +3230,9 @@
       const L = S.L, ln = L.line;
       V3L.chalk.position.set(ln.x, hAt(ln.x, ln.y) + 0.07, ln.y);
       V3L.chalk.rotation.z = -Math.atan2(-ln.dx, -ln.dy) + Math.PI / 2;
-      V3L.chalk.rotation.set(-Math.PI / 2, 0, Math.atan2(ln.dy, ln.dx) * -1 + Math.PI / 2);
+      V3L.chalk.rotation.set(-Math.PI / 2, 0, Math.atan2(ln.dy, ln.dx) * -1 + Math.PI / 2); tilt(V3L.chalk, ln.x, ln.y);
       V3L.ring.position.set(L.base.x, hAt(L.base.x, L.base.y) + 0.07, L.base.y);
+      V3L.ring.rotation.set(-Math.PI / 2, 0, 0); tilt(V3L.ring, L.base.x, L.base.y);
       const bh = hAt(L.base.x, L.base.y);
       L.stack.forEach((st, i) => { const m = V3L.stones[st.i]; m.position.set(L.base.x + Math.sin(i * 2.3) * 0.25, bh + i * TUNE.stoneH + TUNE.stoneH / 2, L.base.y + Math.cos(i * 1.7) * 0.2); m.rotation.set(0, i * 0.7, 0); });
       for (const st of L.stones) {
@@ -3242,7 +3251,7 @@
       ud.shaft.scale.set(len, 1, 1); ud.shaft.position.set(len / 2 + 2.5, 0, 0); ud.head.position.set(len + 2.5, 0, 0);
       ud.mat.color.set(A.charging || A.dragging ? (A.p > 0.86 ? '#ff6a5a' : A.p < 0.25 ? '#f2c230' : '#8fe07a') : '#f2c230');
       V3L.arrow.position.set(p.x, hAt(p.x, p.y) + 0.1, p.y);
-      V3L.arrow.rotation.set(0, -A.ang, 0);
+      V3L.arrow.rotation.set(0, -A.ang, 0); tilt(V3L.arrow, p.x + Math.cos(A.ang) * (len / 2 + 4), p.y + Math.sin(A.ang) * (len / 2 + 4));
     }
     // rings
     let ri = 0;
@@ -3253,14 +3262,14 @@
         m.visible = true;
         const hands = S.id === 'marampitti' && MARAM.catching(S, P);
         m.material = P.safeT > 0 || hands ? V3L.smat : S.id === 'marampitti' ? (P.isPlayer ? V3L.rmat[0] : P.remote ? V3L.rmat[1] : V3L.wmat) : V3L.rmat[P.team] || V3L.wmat;
-        m.position.set(P.e.x, hAt(P.e.x, P.e.y) + 0.06, P.e.y);
+        m.position.set(P.e.x, hAt(P.e.x, P.e.y) + 0.06, P.e.y); m.rotation.set(-Math.PI / 2, 0, 0); tilt(m, P.e.x, P.e.y);
         const sc = P.safeT > 0 || hands ? 1.4 : P.isPlayer && P.act ? 1.15 + 0.25 * Math.sin(S.t * 16) : 1; m.scale.set(sc, sc, sc);
       }
     }
     for (; ri < V3L.rings.length; ri++) V3L.rings[ri].visible = false;
     const T = S.real && S.me && S.me.hold ? S.aimTarget : null;
     V3L.reticle.visible = !!(T && T.e);
-    if (T && T.e) { V3L.reticle.position.set(T.e.x, hAt(T.e.x, T.e.y) + 0.08, T.e.y); V3L.reticle.rotation.z = S.t * 2; V3L.reticle.material.color.set(tooClose(S, T) ? '#ffa23a' : '#ff5a4a'); }
+    if (T && T.e) { V3L.reticle.position.set(T.e.x, hAt(T.e.x, T.e.y) + 0.08, T.e.y); V3L.reticle.rotation.set(-Math.PI / 2, 0, S.t * 2); tilt(V3L.reticle, T.e.x, T.e.y); V3L.reticle.material.color.set(tooClose(S, T) ? '#ffa23a' : '#ff5a4a'); }
     const tl = S.tele;
     V3L.tele.visible = !!(tl && tl.from.e && tl.to.e && !S.ended);
     if (V3L.tele.visible) {
@@ -3268,7 +3277,7 @@
       const cx = q.ax + (q.ex - q.ax) * (l / (q.l + TUNE.overshoot)) * 0.5, cy = q.ay + (q.ey - q.ay) * (l / (q.l + TUNE.overshoot)) * 0.5;
       V3L.tele.scale.set(l, 1, 1);
       V3L.tele.position.set(cx, hAt(cx, cy) + 0.09, cy);
-      V3L.tele.rotation.set(-Math.PI / 2, 0, -Math.atan2(q.by - q.ay, q.bx - q.ax));
+      V3L.tele.rotation.set(-Math.PI / 2, 0, -Math.atan2(q.by - q.ay, q.bx - q.ax)); tilt(V3L.tele, cx, cy);
     }
     const fz = V3L.fuse, ff = V3L.tele.visible ? fuse(tl.from) : 0;
     fz.visible = ff > 0.02;
@@ -3277,7 +3286,7 @@
       const cx = q.ax + ux * l * 0.5, cy = q.ay + uy * l * 0.5;
       fz.scale.set(l, 1, 1);
       fz.position.set(cx, hAt(cx, cy) + 0.11, cy);
-      fz.rotation.set(-Math.PI / 2, 0, -Math.atan2(uy, ux));
+      fz.rotation.set(-Math.PI / 2, 0, -Math.atan2(uy, ux)); tilt(fz, cx, cy);
       fz.userData.mat.color.set(ff >= 1 - lerp(TUNE.lockT[0], TUNE.lockT[1], S.d) / Math.max(0.05, tl.from.windT0 || 1) ? '#ffd84a' : '#ff5a4a');
     }
     void dt;

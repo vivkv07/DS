@@ -2862,7 +2862,7 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
   }
 
   /* ================================================================ 3D layer (view3d.js registerLayer) */
-  const V3 = { ok: false, T: null, H: null, root: null, sess: null, cones: [], lamps: [], walls: [], pans: [], chairs: [], wins: [], tvs: [], doors: [], items: [], rings: [], heads: [], ghost: null, mats: {} };
+  const V3 = { ok: false, T: null, H: null, root: null, sess: null, cones: [], lamps: [], walls: [], pans: [], chairs: [], wins: [], tvs: [], doors: [], items: [], rings: [], heads: [], ghost: null, mats: {}, hideT: new Map() };
   function v3Init(THREE, H) {
     V3.T = THREE; V3.H = H;
     const g = new THREE.Group(); g.name = 'latehome'; g.visible = false;
@@ -2906,7 +2906,7 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     const H = V3.H;
     if (!V3.root) return;
     for (const o of V3.root.children.slice()) { V3.root.remove(o); if (o.userData && o.userData.ownGeo && o.geometry) o.geometry.dispose(); }
-    V3.cones = []; V3.lamps = []; V3.walls = []; V3.pans = []; V3.chairs = []; V3.wins = []; V3.tvs = []; V3.doors = []; V3.items = []; V3.rings = []; V3.heads = []; V3.ghost = null; V3.vcone = [];
+    V3.cones = []; V3.lamps = []; V3.walls = []; V3.pans = []; V3.chairs = []; V3.wins = []; V3.tvs = []; V3.doors = []; V3.items = []; V3.rings = []; V3.heads = []; V3.ghost = null; V3.vcone = []; V3.hideT = new Map();
     void H;
   }
   function mk(geo, mat, x, y, z, sx, sy, sz) {
@@ -2915,6 +2915,19 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     m.userData.noShadow = true; m.castShadow = false; m.receiveShadow = false;
     V3.root.add(m);
     return m;
+  }
+  // [terrain] everything here sits on the ground's real rise and fall (H.terrainAt): a wide disc / ring lying on the
+  // ground (lamp pool, door ring; its face +z, laid flat once) is also tilted to the slope over +-k around (x, y)
+  function tilt(m, x, y, k) {
+    const tA = V3.H.terrainAt, gx = (tA(x + k, y) - tA(x - k, y)) / (2 * k), gy = (tA(x, y + k) - tA(x, y - k)) / (2 * k);
+    if (gx || gy) m.quaternion.setFromUnitVectors(new V3.T.Vector3(0, 0, 1), new V3.T.Vector3(-gx, 1, -gy).normalize());
+  }
+  // a window / TV on a building's face rides that building (the chunk builder sat it on its footprint's low side)
+  function faceBase(x, y, a) {
+    const px = x - Math.cos(a) * 2.5, py = y - Math.sin(a) * 2.5;
+    let b = null;
+    try { N.world.queryStructures(px - 1, py - 1, px + 1, py + 1, (s) => { const r = bldgRect(s); if (b == null && r && px > r.x0 && px < r.x1 && py > r.y0 && py < r.y1) b = V3.H.terrainBase(r.x0, r.y0, r.x1, r.y1); }); } catch (e) { b = null; }
+    return b != null ? b : V3.H.terrainAt(x, y);
   }
   const CONE_COL3D = { walker: [255, 150, 40], chair: [255, 150, 40], window: [255, 90, 170], watchman: [255, 226, 140], daddy: [255, 240, 200], hunter: [255, 226, 140] };
   function coneMesh(role) {
@@ -2948,37 +2961,38 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     if (!S) return;
     for (const sk of S.seekers) V3.cones.push(Object.assign(coneMesh(sk.role), { sk }));
     for (const l of S.C.lamps) {
-      const h = 17 * VS;
-      mk(G3.pole, M.pole, l.x, h / 2, l.y, 1, h, 1);
-      const hd = mk(G3.head, M.head, l.x, h, l.y);
-      const pool = mk(G3.disc, M.pool, l.x, 0.6, l.y, TUNE.lampR * 0.8, TUNE.lampR * 0.8, 1); pool.rotation.x = -Math.PI / 2;
-      const gl = V3.H.glow('#ffb050', 14); gl.position.set(l.x, h, l.y); V3.root.add(gl);
+      const h = 17 * VS, t = V3.H.terrainAt(l.x, l.y);
+      mk(G3.pole, M.pole, l.x, t + h / 2, l.y, 1, h, 1);
+      const hd = mk(G3.head, M.head, l.x, t + h, l.y);
+      const pool = mk(G3.disc, M.pool, l.x, t + 0.6, l.y, TUNE.lampR * 0.8, TUNE.lampR * 0.8, 1); pool.rotation.x = -Math.PI / 2; tilt(pool, l.x, l.y, TUNE.lampR * 0.5);
+      const gl = V3.H.glow('#ffb050', 14); gl.position.set(l.x, t + h, l.y); V3.root.add(gl);
       V3.lamps.push({ hd, pool, gl, l });
     }
     for (const w of S.C.walls) {
-      const L = hyp(w.bx - w.ax, w.by - w.ay), a = Math.atan2(w.by - w.ay, w.bx - w.ax), h = w.h * VS;
-      const m = mk(G3.box, M.wall, (w.ax + w.bx) / 2, h / 2, (w.ay + w.by) / 2, L, h, 2.6); m.rotation.y = -a; m.castShadow = true;
-      const t = mk(G3.box, M.wallTop, (w.ax + w.bx) / 2, h + 0.3, (w.ay + w.by) / 2, L + 0.6, 0.6, 3.2); t.rotation.y = -a;
+      const L = hyp(w.bx - w.ax, w.by - w.ay), a = Math.atan2(w.by - w.ay, w.bx - w.ax), h = w.h * VS, tb = V3.H.terrainBase(w.ax, w.ay, w.bx, w.by);
+      const m = mk(G3.box, M.wall, (w.ax + w.bx) / 2, tb + h / 2, (w.ay + w.by) / 2, L, h, 2.6); m.rotation.y = -a; m.castShadow = true;
+      const t = mk(G3.box, M.wallTop, (w.ax + w.bx) / 2, tb + h + 0.3, (w.ay + w.by) / 2, L + 0.6, 0.6, 3.2); t.rotation.y = -a;
     }
     for (const pn of S.C.pans) {
-      const b = mk(G3.box, M.pan, pn.x, 3.5 * VS, pn.y, 12, 7 * VS, 8); b.rotation.y = -pn.a;
-      const r = mk(G3.box, M.panTop, pn.x, 10.4 * VS, pn.y, 14, 1, 10); r.rotation.y = -pn.a;
+      const tb = V3.H.terrainBase(pn.x - 7, pn.y - 7, pn.x + 7, pn.y + 7);
+      const b = mk(G3.box, M.pan, pn.x, tb + 3.5 * VS, pn.y, 12, 7 * VS, 8); b.rotation.y = -pn.a;
+      const r = mk(G3.box, M.panTop, pn.x, tb + 10.4 * VS, pn.y, 14, 1, 10); r.rotation.y = -pn.a;
       try {
         const tex = V3.H.tex('lh-pan-sign', 128, 48, (g, w, h) => { g.fillStyle = '#2a6a3a'; g.fillRect(0, 0, w, h); g.fillStyle = '#f2c230'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('PAN', w / 2, h / 2 + 2); });
         const s = new THREE.Mesh(G3.plane, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-        s.position.set(pn.x + Math.cos(pn.a) * 6.2, 8.6 * VS, pn.y + Math.sin(pn.a) * 6.2); s.scale.set(10, 3.8, 1); s.rotation.y = -pn.a + Math.PI / 2;
+        s.position.set(pn.x + Math.cos(pn.a) * 6.2, tb + 8.6 * VS, pn.y + Math.sin(pn.a) * 6.2); s.scale.set(10, 3.8, 1); s.rotation.y = -pn.a + Math.PI / 2;
         s.userData.noShadow = true; V3.root.add(s);
       } catch (e) { N.err('latehome.v3sign', e); }
     }
     for (const sk of S.seekers) {
       if (sk.role === 'chair') {
-        const g = new THREE.Group(); g.position.set(sk.home.x, 0, sk.home.y); g.rotation.y = -sk.spec.face;
+        const g = new THREE.Group(); g.position.set(sk.home.x, V3.H.terrainAt(sk.home.x, sk.home.y), sk.home.y); g.rotation.y = -sk.spec.face;
         const seat = new THREE.Mesh(G3.box, M.chair); seat.scale.set(5.2, 0.5, 5.2); seat.position.set(0.3, 3.3, 0); g.add(seat);
         const back = new THREE.Mesh(G3.box, M.chair); back.scale.set(0.5, 4.6, 5.2); back.position.set(-2.5, 5.6, 0); g.add(back);
         for (const [lx, lz] of [[-2, -2.2], [2.4, -2.2], [-2, 2.2], [2.4, 2.2]]) { const leg = new THREE.Mesh(G3.box, M.chair); leg.scale.set(0.45, 3.2, 0.45); leg.position.set(lx, 1.6, lz); g.add(leg); }
         V3.root.add(g); V3.chairs.push({ g, sk });
       } else if (sk.role === 'window') {
-        const sp = sk.spec, h = (sp.wh || 12) * VS;
+        const sp = sk.spec, h = faceBase(sp.wx, sp.wy, sp.face) + (sp.wh || 12) * VS;
         const fr = mk(G3.plane, M.winOff, sp.wx + Math.cos(sp.face) * 0.35, h, sp.wy + Math.sin(sp.face) * 0.35, 9, 6.5, 1);
         fr.rotation.y = -sp.face + Math.PI / 2;
         const lit = mk(G3.plane, M.win, sp.wx + Math.cos(sp.face) * 0.4, h, sp.wy + Math.sin(sp.face) * 0.4, 8.4, 6, 1); lit.rotation.y = -sp.face + Math.PI / 2;
@@ -2989,22 +3003,23 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
       }
     }
     for (const tv of S.C.tvs) {
-      const m = mk(G3.plane, M.tv.clone(), tv.x + Math.cos(tv.a) * 0.5, tv.h * VS, tv.y + Math.sin(tv.a) * 0.5, 6, 4.5, 1);
+      const m = mk(G3.plane, M.tv.clone(), tv.x + Math.cos(tv.a) * 0.5, faceBase(tv.x, tv.y, tv.a) + tv.h * VS, tv.y + Math.sin(tv.a) * 0.5, 6, 4.5, 1);
       m.material.userData = {}; m.rotation.y = -tv.a + Math.PI / 2;
       V3.tvs.push({ m, tv });
     }
     for (const kid of S.kids) {
-      const d = S.C.doors[kid.uid], mine = kid === S.me;
-      const ring = mk(G3.ring, mine ? M.doorMine : M.doorOther, d.x, 0.7, d.y, TUNE.doorR, TUNE.doorR, 1); ring.rotation.x = -Math.PI / 2;
+      const d = S.C.doors[kid.uid], mine = kid === S.me, t = V3.H.terrainAt(d.x, d.y);
+      const ring = mk(G3.ring, mine ? M.doorMine : M.doorOther, d.x, t + 0.7, d.y, TUNE.doorR, TUNE.doorR, 1); ring.rotation.x = -Math.PI / 2; tilt(ring, d.x, d.y, TUNE.doorR);
       const house = new THREE.Group();
       const body = new THREE.Mesh(G3.box, mine ? M.house : M.houseOther); body.scale.set(4.4, 3.4, 4.4); body.position.y = 1.7; house.add(body);
       const roof = new THREE.Mesh(G3.cone, mine ? M.house : M.houseOther); roof.scale.set(4.2, 3, 4.2); roof.position.y = 4.9; roof.rotation.y = Math.PI / 4; house.add(roof);
-      house.position.set(d.x, 22, d.y); V3.root.add(house);
-      V3.doors.push({ ring, house, kid });
+      house.position.set(d.x, t + 22, d.y); V3.root.add(house);
+      V3.doors.push({ ring, house, kid, t });
     }
     for (const it of S.items) {
-      const m = it.kind === 'goli' ? mk(G3.sphere, M.goli, it.x, 1.6, it.y, 1.3, 1.3, 1.3) : mk(G3.spool, M.manja, it.x, 1.6, it.y, 2.2, 2.6, 2.2);
-      const gl = V3.H.glow(it.kind === 'goli' ? '#9affea' : '#ff9fd0', 7); gl.position.set(it.x, 3.2, it.y); V3.root.add(gl);
+      const t = V3.H.terrainAt(it.x, it.y);
+      const m = it.kind === 'goli' ? mk(G3.sphere, M.goli, it.x, t + 1.6, it.y, 1.3, 1.3, 1.3) : mk(G3.spool, M.manja, it.x, t + 1.6, it.y, 2.2, 2.6, 2.2);
+      const gl = V3.H.glow(it.kind === 'goli' ? '#9affea' : '#ff9fd0', 7); gl.position.set(it.x, t + 3.2, it.y); V3.root.add(gl);
       V3.items.push({ m, gl, it });
     }
     for (let i = 0; i < 6; i++) { const r = mk(G3.ring, M.hide, 0, 0.8, 0, 1, 1, 1); r.rotation.x = -Math.PI / 2; r.visible = false; V3.rings.push(r); }
@@ -3030,15 +3045,17 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
       if (c.line) c.line.visible = c.m.visible;
       if (!c.m.visible) return;
       const n = Math.min(c.n + 1, (P.length - 2) / 2);
-      const pos = c.pos, y = 0.9;
-      pos[0] = P[0]; pos[1] = y; pos[2] = P[1];
-      for (let i = 0; i < c.n + 1; i++) { const j = Math.min(i, n - 1); pos[3 + i * 3] = P[2 + j * 2]; pos[4 + i * 3] = y; pos[5 + i * 3] = P[3 + j * 2]; }
+      // (every fan vertex on the ground under it: th = the terrain at the apex, then at each rim point)
+      const pos = c.pos, y = 0.9, th = c.th || (c.th = new Float32Array(c.n + 2)), tA = V3.H.terrainAt;
+      th[0] = tA(P[0], P[1]);
+      pos[0] = P[0]; pos[1] = y + th[0]; pos[2] = P[1];
+      for (let i = 0; i < c.n + 1; i++) { const j = Math.min(i, n - 1); th[i + 1] = tA(P[2 + j * 2], P[3 + j * 2]); pos[3 + i * 3] = P[2 + j * 2]; pos[4 + i * 3] = y + th[i + 1]; pos[5 + i * 3] = P[3 + j * 2]; }
       c.m.geometry.attributes.position.needsUpdate = true;
       c.m.geometry.computeBoundingSphere();
       const L = c.lpos, y2 = y + 0.15;
-      L[0] = P[0]; L[1] = y2; L[2] = P[1];
-      for (let i = 0; i <= c.n; i++) { const j = Math.min(i, n - 1); L[3 + i * 3] = P[2 + j * 2]; L[4 + i * 3] = y2; L[5 + i * 3] = P[3 + j * 2]; }
-      const e = (c.n + 2) * 3; L[e] = P[0]; L[e + 1] = y2; L[e + 2] = P[1];
+      L[0] = P[0]; L[1] = y2 + th[0]; L[2] = P[1];
+      for (let i = 0; i <= c.n; i++) { const j = Math.min(i, n - 1); L[3 + i * 3] = P[2 + j * 2]; L[4 + i * 3] = y2 + th[i + 1]; L[5 + i * 3] = P[3 + j * 2]; }
+      const e = (c.n + 2) * 3; L[e] = P[0]; L[e + 1] = y2 + th[0]; L[e + 2] = P[1];
       c.line.geometry.attributes.position.needsUpdate = true;
       c.line.visible = true;
       const col = alert ? [255, 90, 70] : c.col;
@@ -3055,7 +3072,7 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     for (const d of V3.doors) {
       const vis = d.kid.role !== 'daddy' && !d.kid.done;
       d.ring.visible = vis; d.house.visible = vis;
-      d.house.rotation.y = T * 1.2; d.house.position.y = 20 + Math.sin(T * 2.5) * 1.5;
+      d.house.rotation.y = T * 1.2; d.house.position.y = d.t + 20 + Math.sin(T * 2.5) * 1.5;
       const s = d.kid === S.me ? 1 + 0.12 * Math.sin(T * 4) : 0.8; d.ring.scale.set(TUNE.doorR * s, TUNE.doorR * s, 1);
     }
     for (const it of V3.items) { const v = !it.it.taken; it.m.visible = v; it.gl.visible = v; it.m.rotation.y = T * 2; it.gl.material.opacity = 0.5 + 0.4 * Math.sin(T * 5 + it.it.x); }
@@ -3067,7 +3084,9 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
         const d = hyp(h.x - p.x, h.y - p.y);
         if (d > 70) continue;
         const r = V3.rings[ri++];
-        r.visible = true; r.position.set(h.x, 0.8, h.y); r.scale.set(h.r * 0.7, h.r * 0.7, 1);
+        let th = V3.hideT.get(h);
+        if (th == null) V3.hideT.set(h, (th = V3.H.terrainAt(h.x, h.y)));
+        r.visible = true; r.position.set(h.x, th + 0.8, h.y); r.scale.set(h.r * 0.7, h.r * 0.7, 1);
         r.material = d < h.r ? V3.mats.hideOn : V3.mats.hide;
       }
     }
@@ -3079,16 +3098,17 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
       if (kid.hide !== 2 || kid.done || kid.ghost || kid.role === 'daddy') continue;
       if (S.me.role === 'daddy' && kid !== S.me) continue;
       const x = kid.isMe ? p.x : kid.x, y = kid.isMe ? p.y : kid.y;
+      const ke = kid.isMe ? p : kid.ent, gy = ke ? V3.H.elev(ke) : V3.H.terrainAt(x, y);
       const H3 = V3.heads[hi++];
       H3.head.visible = true; H3.hair.visible = true;
-      H3.head.position.set(x, 3.0 * VS, y); H3.hair.position.set(x, 3.0 * VS + 0.7, y);
+      H3.head.position.set(x, gy + 3.0 * VS, y); H3.hair.position.set(x, gy + 3.0 * VS + 0.7, y);
       H3.head.material = V3.H.mat((kid.look && kid.look.skin) || '#b97a4f'); H3.hair.material = V3.H.mat((kid.look && kid.look.hair) || '#1a1412');
       H3.eye.visible = kid.isMe;
-      if (kid.isMe) { H3.eye.material = V3.eyeMat[peekLevel(kid)]; H3.eye.position.set(x, 6.4 * VS, y); }
+      if (kid.isMe) { H3.eye.material = V3.eyeMat[peekLevel(kid)]; H3.eye.position.set(x, gy + 6.4 * VS, y); }
     }
     for (; hi < V3.heads.length; hi++) { const H3 = V3.heads[hi]; H3.head.visible = H3.hair.visible = H3.eye.visible = false; }
     // the ghost: a pale wisp where I am
-    if (V3.ghost) { const g = S.me && S.me.ghost; V3.ghost.visible = !!g; if (g) { V3.ghost.position.set(p.x, 5 + Math.sin(T * 3) * 0.6, p.y); V3.ghost.material.opacity = 0.25 + 0.1 * Math.sin(T * 4); } }
+    if (V3.ghost) { const g = S.me && S.me.ghost; V3.ghost.visible = !!g; if (g) { V3.ghost.position.set(p.x, V3.H.elev(p) + 5 + Math.sin(T * 3) * 0.6, p.y); V3.ghost.material.opacity = 0.25 + 0.1 * Math.sin(T * 4); } }
     // emotes for the person renderer
     for (const sk of S.seekers) sk.emoteSt = sk.emoteT > 0 && sk.emote ? { kind: sk.emote === 'z' ? 'zzz' : sk.emote, t: Math.max(0, 1.4 - sk.emoteT), secs: 1.4 } : null;
     void dt;

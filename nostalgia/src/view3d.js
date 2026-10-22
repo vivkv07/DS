@@ -677,6 +677,26 @@
       ' if (ob > 0.25 + 0.75 * smoothstep(0.55, 1.0, od / orr)) discard; } } }',
     uniforms: (sh) => { sh.uniforms.uOccA = UNI.uOccA; sh.uniforms.uOccB = UNI.uOccB; sh.uniforms.uOccR = UNI.uOccR; },
   };
+  // street lamps beyond the few real point lights: every lit material that opts in (facades, ground, roads, people,
+  // vehicles: LAMP_GLSL.apply(shader) in its onBeforeCompile) is lit by the LAMPS_N lamps nearest the focus that
+  // have no point light of their own: a soft pool round each (view-space positions + radius in uLampP, colour x
+  // intensity in uLampC, set every frame by updatePointLights; w = 0 ends the list)
+  const LAMPS_N = 16;
+  const LAMP_GLSL = {
+    decl: 'uniform vec4 uLampP[' + LAMPS_N + '];\nuniform vec4 uLampC[' + LAMPS_N + '];',
+    frag: [
+      '#include <lights_fragment_end>',
+      '{ vec3 lpos = -vViewPosition; vec3 lnn = normalize(normal);',
+      '  for (int i = 0; i < ' + LAMPS_N + '; i++) { vec4 L = uLampP[i]; if (L.w <= 0.0) break;',
+      '    vec3 dv = L.xyz - lpos; float d = length(dv); float a = clamp(1.0 - d / L.w, 0.0, 1.0); a *= a;',
+      '    float ndl = max(dot(lnn, dv / max(d, 0.001)), 0.0) * 0.7 + 0.3;',
+      '    reflectedLight.directDiffuse += uLampC[i].rgb * (uLampC[i].a * a * ndl) * diffuseColor.rgb; } }',
+    ].join('\n'),
+    apply(sh) {
+      sh.uniforms.uLampP = UNI.uLampP; sh.uniforms.uLampC = UNI.uLampC;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + LAMP_GLSL.decl).replace('#include <lights_fragment_end>', LAMP_GLSL.frag);
+    },
+  };
   function nearFade(shader, uni) {
     // fades the whole object by its origin's (trunk base's) horizontal distance to the camera, not per pixel,
     // so a tall trunk beside the chase camera disappears cleanly instead of leaving a dotted strip
@@ -692,6 +712,7 @@
 
   function facadeCompile(shader) {
     shader.uniforms.uNight = UNI.uNight; shader.uniforms.uSkyTint = UNI.uHor;
+    LAMP_GLSL.apply(shader);
     shader.uniforms.uFlood = { value: (this && this.userData && this.userData.flood) || 0 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nvarying vec4 vFac;')
@@ -730,6 +751,7 @@
   }
   function groundCompile(shader) {
     const ud = this.userData;
+    LAMP_GLSL.apply(shader);
     shader.uniforms.auxMap = ud.auxU;
     shader.uniforms.uNight = UNI.uNight; shader.uniforms.uTime = UNI.uTime; shader.uniforms.uSunDir = UNI.uSunDir;
     shader.uniforms.uSunCol = UNI.uSunCol; shader.uniforms.uZen = UNI.uZen; shader.uniforms.uHor = UNI.uHor;
@@ -792,6 +814,8 @@
     UNI.uZen = { value: new THREE.Color('#3a74c4') }; UNI.uHor = { value: new THREE.Color('#d2dfe8') };
     UNI.uMoonDir = { value: new THREE.Vector3(-0.3, 0.8, -0.4).normalize() };
     UNI.uSunVis = { value: 1 };
+    UNI.uLampP = { value: Array.from({ length: LAMPS_N }, () => new THREE.Vector4()) };
+    UNI.uLampC = { value: Array.from({ length: LAMPS_N }, () => new THREE.Vector4()) };
 
     TEX.facade = canvasTex(2048, 256, paintFacadeAtlas, { premult: true });
     TEX.facade.wrapS = TEX.facade.wrapT = THREE.ClampToEdgeWrapping;
@@ -1015,19 +1039,35 @@
   }
 
   /** height of an entity's feet in 3D (roof zones) */
+  // [terrain hook] the ground's real rise and fall (terrain.js): the city sits on it. Chunk structures take the
+  // terrain under their footprint (the low side: a house on a slope is cut into it), long walls / rails follow it
+  // vertex by vertex, landmarks the low corner of theirs, entities the point under them; the ground provider's
+  // terrain mesh and roads bend with it (view3d_ground.js), vehicles pitch with it (view3d_actors.js)
+  function terrH(x, y) { const T = N.terrain; return T && T.ready ? T.heightAt(x, y) : 0; }
+  function terrBase(x0, y0, x1, y1) { return Math.min(terrH(x0, y0), terrH(x1, y0), terrH(x0, y1), terrH(x1, y1), terrH((x0 + x1) / 2, (y0 + y1) / 2)); }
+  /** a roof zone (world.js roofs) stands where the building under it does: a landmark's lift, a building's base */
+  function roofBase(r) {
+    if (!r) return 0;
+    if (r._tb != null) return r._tb;
+    const lm = r.lm, b = r.bldg;
+    const v = lm ? terrBase(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2)
+      : b && b.w != null ? terrBase(b.x, b.y, b.x + b.w, b.y + b.d) : terrBase(r.x, r.y, r.x + r.w, r.y + r.d);
+    if (N.terrain && N.terrain.ready) r._tb = v;
+    return v;
+  }
   function elevation(e) {
     if (!e) return 0;
+    const t = terrH(e.x, e.y);
     if (e.level) {
-      const RF = N.world && N.world.roofs;
-      if (RF && RF.heightAt) { const h = RF.heightAt(e.x, e.y); if (h) return h * VS; }
-      const r = RF && RF.get && RF.get(e.level);
-      if (r) return r.h * VS;
+      const RF = N.world && N.world.roofs, r = RF && RF.get && RF.get(e.level), tb = r ? roofBase(r) : t;
+      if (RF && RF.heightAt) { const h = RF.heightAt(e.x, e.y); if (h) return h * VS + tb; }
+      if (r) return r.h * VS + tb;
     }
-    if (isFinite(e.z) && e.z > 0) return e.z;
-    // [ground hook] raised footpaths / medians and pothole dips under the entity (view3d_ground.js)
+    if (isFinite(e.z) && e.z > 0) return e.z + t;
+    // [ground hook] raised footpaths / medians and pothole dips under the entity (view3d_ground.js; the terrain in it)
     const gp = gpOn();
     if (gp && gp.heightAt) return gp.heightAt(e.x, e.y, e);
-    return 0;
+    return t;
   }
 
   /* ================================================================ ground painting (render.js painter) */
@@ -1125,6 +1165,8 @@
       geom: null, detail: -1, objs: [], lights: [], dist: 0, job: null, gjob: null, wantDetail: 0, wantRes: 0, dirty: false,
     };
     ch.group.name = 'chunk' + ci + '_' + cj;
+    ch.tmin = Infinity; ch.tmax = -Infinity; // [terrain] the ground's range over the chunk (culling)
+    for (let a = 0; a <= 4; a++) for (let b = 0; b <= 4; b++) { const h = terrH(ch.x0 + CH * a / 4, ch.y0 + CH * b / 4); ch.tmin = Math.min(ch.tmin, h); ch.tmax = Math.max(ch.tmax, h); }
     ch.group.position.set(ch.x0, 0, ch.y0);
     ch.group.matrixAutoUpdate = false; ch.group.updateMatrix();
     E.city.add(ch.group);
@@ -1532,7 +1574,7 @@
       if (!slot) continue;
       let gb = byPage.get(slot.page);
       if (!gb) { gb = new GB({ facade: true }); byPage.set(slot.page, gb); }
-      const y0 = FLOOR_H * 0.7, y1 = y0 + h;
+      const y0 = FLOOR_H * 0.7 + (b._toff || 0), y1 = y0 + h;
       const ax = s[0] + ux * m + nx * off, az = s[1] + uz * m + nz * off, bx = s[0] + ux * (m + w) + nx * off, bz = s[1] + uz * (m + w) + nz * off;
       gb.color('#ffffff');
       gb.quad(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az, [slot.u0, slot.v0, slot.u1, slot.v1]);
@@ -1647,6 +1689,10 @@
   }
   function addRailway(J, segs) {
     const gb = J.gb; gb.plain();
+    const n0 = gb.n;
+    try { railTracks(J, gb, segs); } finally { for (let k = n0; k < gb.n; k++) gb.P[k * 3 + 1] += terrH(J.ox + gb.P[k * 3], J.oz + gb.P[k * 3 + 2]); } // [terrain] the rails on the ground, vertex by vertex
+  }
+  function railTracks(J, gb, segs) {
     for (const sg of segs) {
       const ax = sg[0] - J.ox, az = sg[1] - J.oz, bx = sg[2] - J.ox, bz = sg[3] - J.oz, L = Math.hypot(bx - ax, bz - az) || 1;
       const nx = -(bz - az) / L, nz = (bx - ax) / L;
@@ -1672,10 +1718,29 @@
     ch.gjob = J;
     return J;
   }
+  const TLISTS = ['trunks', 'blobs', 'crowns', 'rocks', 'glows', 'lamps'];
+  const PER_VERTEX = { wall: 1, rail: 1, compound: 1 };
+  /** the structure just built (gb vertices from n0, list entries from lens, objects from o0) onto the terrain */
+  function sitOnTerrain(J, s, n0, lens, o0) {
+    const T = N.terrain; if (!T || !T.ready || s.terrSelf) return; // (terrSelf: it placed its own parts)
+    const P = J.gb.P, n1 = J.gb.n, ox = J.ox, oz = J.oz;
+    if (PER_VERTEX[s.t]) {
+      for (let k = n0; k < n1; k++) P[k * 3 + 1] += terrH(ox + P[k * 3], oz + P[k * 3 + 2]);
+      for (let q = 0; q < TLISTS.length; q++) { const A = J[TLISTS[q]], lamps = TLISTS[q] === 'lamps'; for (let k = lens[q]; k < A.length; k++) A[k][1] += terrH(A[k][0] + (lamps ? 0 : ox), A[k][2] + (lamps ? 0 : oz)); }
+      s._toff = terrH(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
+    } else {
+      const off = s.t === 'roofzone' ? roofBase(s.roof) : s.x != null && s.w != null && s.d != null ? terrBase(s.x, s.y, s.x + s.w, s.y + s.d) : terrH(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
+      for (let k = n0; k < n1; k++) P[k * 3 + 1] += off;
+      for (let q = 0; q < TLISTS.length; q++) { const A = J[TLISTS[q]]; for (let k = lens[q]; k < A.length; k++) A[k][1] += off; }
+      s._toff = off;
+    }
+    for (let k = o0; k < J.out.length; k++) J.out[k].position.y += s._toff;
+  }
   function stepGeom(J, deadline) {
     const L = J.list;
     while (J.i < L.length) {
       const s = L[J.i++];
+      const n0 = J.gb.n, o0 = J.out.length, lens = TLISTS.map((k) => J[k].length);
       try {
         const custom = STRUCT.get(s.t);
         if (custom) { const o = custom(THREE, s, H, J.gb, J); if (o && o.isObject3D) { o.position.x -= J.ox; o.position.z -= J.oz; J.out.push(o); } }
@@ -1692,6 +1757,7 @@
           default: break;
         }
       } catch (e) { N.err('view3d.struct:' + s.t, e); }
+      try { sitOnTerrain(J, s, n0, lens, o0); } catch (e) { N.err('view3d.terrain', e); }
       if ((J.i & 15) === 0 && now() > deadline) return false;
     }
     return true;
@@ -1870,6 +1936,7 @@
     if (obj === false) { lmRecs.set(lm.id, { lm, obj: null, reg }); return; }
     if (!obj || !obj.isObject3D) obj = fallbackLandmark(lm);
     if (!obj.userData.worldSpace) obj.position.set(lm.x + obj.position.x, obj.position.y, lm.y + obj.position.z);
+    obj.position.y += terrBase(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2); // [terrain]
     const shadow = Q.shadows && !(reg && reg.opts && reg.opts.castShadow === false);
     obj.traverse((m) => { if (m.isMesh) { m.castShadow = shadow && m.userData.noShadow !== true; m.receiveShadow = Q.shadows; } });
     obj.name = obj.name || 'lm:' + lm.id;
@@ -2080,8 +2147,8 @@
   /* ================================================================ sky, sun, fog, lights */
   // time-of-day keys: minute, zenith, horizon, sun colour, sun intensity, hemi sky, hemi ground, hemi intensity
   const TOD = [
-    [0, '#070c1e', '#30294a', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
-    [290, '#08101f', '#2c2848', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
+    [0, '#070c1e', '#30294a', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
+    [290, '#08101f', '#2c2848', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
     [345, '#29396e', '#d58a8e', '#ff9a70', 0.55, '#5a5a8a', '#3a2a22', 0.6],
     [400, '#4a76c0', '#f2c6a2', '#ffc896', 1.7, '#8aa2c8', '#6a5038', 0.78],
     [480, '#3d78c8', '#d8e2ea', '#fff0dc', 2.5, '#a6bede', '#7a6448', 0.85],
@@ -2090,9 +2157,9 @@
     [1020, '#4f72b4', '#f4c890', '#ffc078', 2.3, '#a8b0c8', '#8a6440', 0.8],
     [1080, '#495c9c', '#fa9c60', '#ff9a52', 1.8, '#8c8cb0', '#7a5030', 0.72],
     [1120, '#33407a', '#de7650', '#ff7a40', 0.9, '#6a6a98', '#4a3426', 0.62],
-    [1160, '#1c2350', '#7a4a6a', '#8a7ab0', 0.4, '#3e4270', '#20180f', 0.55],
-    [1220, '#090f24', '#3a3050', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
-    [1440, '#070c1e', '#30294a', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
+    [1160, '#1c2350', '#7a4a6a', '#8a7ab0', 0.4, '#454a7a', '#2c2218', 0.6],
+    [1220, '#090f24', '#3a3050', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
+    [1440, '#070c1e', '#30294a', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
   ];
   const SUN = { gx: 0.6, gy: 0.2, elev: 0.5, day: 1, night: 0, dir: null, lightDir: null, moon: false };
   const SKYC = {};
@@ -2204,7 +2271,7 @@
     // fog: horizon colour, slightly towards the zenith
     E.scene.fog.color.set(T.hor).lerp(UNI.uZen.value, 0.12);
     E.scene.fog.far = Q.drawDist; E.scene.fog.near = Q.drawDist * (night > 0.5 ? 0.18 : 0.3);
-    E.renderer.toneMappingExposure = 1.0 + night * 0.25;
+    E.renderer.toneMappingExposure = E.expo || 1;
     // sun light
     const sun = E.sun;
     sun.color.set(T.sun); sun.intensity = T.sunI * (SUN.moon ? 0.9 : 1);
@@ -2227,8 +2294,12 @@
   // a few real point lights near the focus at night (lamps, R.lights, actor lights)
   const lightCands = [];
   const actorLights = [];
+  // the player at night: a soft cool fill round him (no shadow, no visible source) so he never melts into the dark,
+  // brighter where there is no lamp near (the eye adapting), and the exposure rising in dark lanes
+  const NIGHT = { fill: 0.42, fillDark: 0.72, fillR: 46, fillH: 12, expo: [0.06, 0.32], litFull: 0.7, expoK: 1.4, lit: 0 };
+  let _lv = null, _col = null; // (three is loaded lazily: made on first use)
   function updatePointLights(fx, fy) {
-    const P = E.points; if (!P || !P.length) return;
+    const P = E.points || [];
     const night = SUN.night;
     lightCands.length = 0;
     if (night > 0.05) {
@@ -2240,10 +2311,23 @@
       // (2D lights carry no height: one standing on a roof / terrace — a mission marker's night glow on the home
       // terrace, journey audit J16 — is lifted to the roof instead of lighting the street under it)
       const RFh = N.world && N.world.roofs && N.world.roofs.heightAt;
-      for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, L.h != null ? L.h : ((RFh ? (N.world.roofs.heightAt(L.x, L.y) || 0) * VS : 0) + 8), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
-      for (const L of actorLights) { const d = Math.hypot(L.x - fx, L.y - fy); if (d < 300) lightCands.push([d * 0.7, L.x, L.h || 6, L.y, L.color || '#fff2d0', L.intensity == null ? 1 : L.intensity, L.r || 60]); }
+      for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, terrH(L.x, L.y) + (L.h != null ? L.h : ((RFh ? (N.world.roofs.heightAt(L.x, L.y) || 0) * VS : 0) + 8)), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
+      for (const L of actorLights) { const d = Math.hypot(L.x - fx, L.y - fy); if (d < 300) lightCands.push([d * 0.7, L.x, (L.abs ? 0 : terrH(L.x, L.y)) + (L.h || 6), L.y, L.color || '#fff2d0', L.intensity == null ? 1 : L.intensity, L.r || 60]); }
       lightCands.sort((a, b) => a[0] - b[0]);
+      // how lit is the player's spot (lamps within their reach of him): 0 = a dark lane, 1+ = under a street light
+      const pl = N.player;
+      let lit = 0;
+      if (pl && isFinite(pl.x)) for (const c of lightCands) { const d = Math.hypot(c[1] - pl.x, c[3] - pl.y), r = c[6] * 1.1; if (d < r) lit += c[5] * (1 - d / r); }
+      NIGHT.lit += (lit - NIGHT.lit) * 0.08;
+      if (pl && isFinite(pl.x) && !(R_camOverride())) {
+        const dark = 1 - U.clamp(NIGHT.lit / NIGHT.litFull, 0, 1);
+        lightCands.unshift([0, pl.x, elevation(pl) + NIGHT.fillH, pl.y, '#c8d2ff', NIGHT.fill + (NIGHT.fillDark - NIGHT.fill) * dark, NIGHT.fillR]);
+      }
     }
+    // exposure: the eye opens up in the dark, less so under the lamps (smoothed: a second or so to adapt)
+    const dark = 1 - U.clamp(NIGHT.lit / NIGHT.litFull, 0, 1);
+    const want = 1 + night * (NIGHT.expo[0] + (NIGHT.expo[1] - NIGHT.expo[0]) * dark);
+    E.expo = E.expo == null ? want : E.expo + (want - E.expo) * Math.min(1, (E.frameDt || 0.016) / NIGHT.expoK);
     for (let i = 0; i < P.length; i++) {
       const c = lightCands[i], p = P[i];
       if (!c) { p.intensity = 0; continue; }
@@ -2251,7 +2335,23 @@
       p.color.set(c[4]);
       p.distance = c[6]; p.intensity = 1.6 * c[5] * night;
     }
+    // the next LAMPS_N lamps: the lamp-pool uniforms (view space)
+    const LP = UNI.uLampP && UNI.uLampP.value, LC = UNI.uLampC && UNI.uLampC.value;
+    if (!LP) return;
+    if (!_lv) { _lv = new THREE.Vector3(); _col = new THREE.Color(); }
+    E.camera.updateMatrixWorld();
+    const vm = E.camera.matrixWorldInverse;
+    let n = 0;
+    for (let i = P.length; i < lightCands.length && n < LAMPS_N; i++) {
+      const c = lightCands[i];
+      _lv.set(c[1], c[2], c[3]).applyMatrix4(vm);
+      LP[n].set(_lv.x, _lv.y, _lv.z, c[6] * 1.05);
+      _col.set(c[4]); LC[n].set(_col.r, _col.g, _col.b, 1.25 * c[5] * night);
+      n++;
+    }
+    for (; n < LAMPS_N; n++) LP[n].w = 0;
   }
+  const R_camOverride = () => !!(N.render && N.render.camOverride);
 
   /* ================================================================ cameras */
   const CAM = {
@@ -2295,10 +2395,11 @@
     if (!CAMSOL.size) return false;
     if (!camSolH) dynSolidH(-1);
     for (let q = 1; q <= 4; q++) {
-      const i = Math.floor((x + (q === 1 ? CAM_SOL_M : q === 2 ? -CAM_SOL_M : 0)) / C), j = Math.floor((z + (q === 3 ? CAM_SOL_M : q === 4 ? -CAM_SOL_M : 0)) / C);
+      const px = x + (q === 1 ? CAM_SOL_M : q === 2 ? -CAM_SOL_M : 0), pz = z + (q === 3 ? CAM_SOL_M : q === 4 ? -CAM_SOL_M : 0);
+      const i = Math.floor(px / C), j = Math.floor(pz / C);
       if (i < 0 || j < 0 || i >= GW || j >= GH) continue;
       const h = camSolH.get(j * GW + i);
-      if (h != null && y < h + 1.2) return true;
+      if (h != null && y < h + terrH(px, pz) + 1.2) return true; // (a stall's height is above the ground under it)
     }
     return false;
   }
@@ -2320,11 +2421,11 @@
     }
   }
   function camBlocked(x, y, z, G, GW, GH, C, marg) {
-    const hg = heightAt(x, z);
-    if (y < hg + 1.2) return true;
+    const hg = heightAt(x, z), tg = terrH(x, z);
+    if (y < hg + tg + 1.2) return true;
     if (hg === 0 && G) {
       const i = Math.floor(x / C), j = Math.floor(z / C);
-      if (i >= 0 && j >= 0 && i < GW && j < GH) { const k = j * GW + i; if (G[k] === SOLID_SURF && y < dynSolidH(k) + 1.2) return true; }
+      if (i >= 0 && j >= 0 && i < GW && j < GH) { const k = j * GW + i; if (G[k] === SOLID_SURF && y < dynSolidH(k) + tg + 1.2) return true; }
       if (marg && camSolNear(x, y, z, GW, GH, C)) return true;
     }
     for (let q = 0, o = 0; q < camVN; q++, o += 7) {
@@ -2407,8 +2508,9 @@
       CAM.orbit += dt * (mode === 'title' ? 0.05 : 0.02);
       const z = Math.max(0.3, R.cam.zoom || 1), dist = (mode === 'title' ? 300 : 170) / z, hgt = (mode === 'title' ? 150 : 95) / z;
       const ang = (R.camOverride ? view.yaw : 0) + CAM.orbit;
-      CAM.tgt.set(R.cam.x, 12, R.cam.y);
-      CAM.pos.set(R.cam.x - Math.cos(ang) * dist, hgt, R.cam.y - Math.sin(ang) * dist);
+      const tc = terrH(R.cam.x, R.cam.y);
+      CAM.tgt.set(R.cam.x, 12 + tc, R.cam.y);
+      CAM.pos.set(R.cam.x - Math.cos(ang) * dist, hgt + Math.max(tc, terrH(R.cam.x - Math.cos(ang) * dist, R.cam.y - Math.sin(ang) * dist)), R.cam.y - Math.sin(ang) * dist);
       const k = CAM.snap ? 1 : 1 - Math.exp(-dt * 2.5);
       if (!CAM.cpos) { CAM.cpos = CAM.pos.clone(); CAM.ctgt = CAM.tgt.clone(); }
       CAM.cpos.lerp(CAM.pos, k); CAM.ctgt.lerp(CAM.tgt, k);
@@ -2424,9 +2526,11 @@
       view.pitch = U.clamp(view.pitch, -1.15, 1.25);
       let yaw = view.yaw, eyeX = ex, eyeY = ey, eyeH = el + 6.3;
       if (veh) {
-        // cockpit: the look offset springs back to the vehicle heading
+        // cockpit: the look offset springs back to the vehicle heading; on a double-decker's top deck (decker.js) he
+        // walks about and looks where he likes (the view turns with the bus)
+        const deck = N.decker && N.decker.onDeck(p) ? N.decker.eye() : null;
         CAM.fpsOff = wrapA(CAM.fpsOff + dx + sx * 2.5 * dt);
-        if (since > 1.2) CAM.fpsOff *= Math.exp(-dt * 2.5);
+        if (since > 1.2 && !deck) CAM.fpsOff *= Math.exp(-dt * 2.5);
         yaw = (veh.angle || 0) + CAM.fpsOff;
         view.yaw = yaw;
         const c = Math.cos(veh.angle || 0), s = Math.sin(veh.angle || 0);
@@ -2435,6 +2539,12 @@
         const side = cls === 'car' ? T.d * 0.18 : 0; // right-hand drive
         eyeX = ex + c * fwd - s * side; eyeY = ey + s * fwd + c * side;
         eyeH = el + (cls === 'heavy' ? 15 : cls === 'auto' ? 9 : cls === 'bike' ? 8.6 : cls === 'boat' ? 6.5 : 8.2);
+        if (deck) {
+          eyeX = deck.x; eyeY = deck.y; eyeH = el + deck.h;
+          // a little bob walking the aisle
+          const ws = N.decker.speed();
+          if (!reducedMotion() && ws > 4) { CAM.bobPh += dt * 9; eyeH += Math.sin(CAM.bobPh) * Math.min(0.22, ws * 0.006); }
+        }
         if (cls === 'bike' && !reducedMotion()) eyeH += Math.sin(tnow * 9) * Math.min(0.15, spd * 0.001);
       } else {
         CAM.fpsOff = 0;
@@ -2448,18 +2558,20 @@
       cam.lookAt(CAM.look);
       CAM.distCur = 0;
       setFov(veh ? fov + 6 + Math.min(10, spd * 0.05) : fov + 4, dt);
-      cockpit(veh);
+      cockpit(veh && !(N.decker && N.decker.onDeck(p)) ? veh : null); // (the top deck has no dashboard)
       return;
     }
     cockpit(null);
     // third person: orbit / chase
     view.pitch = U.clamp(view.pitch, -0.12, 1.15);
     const cls = T ? T.cls || 'car' : null;
+    const deck = !!(veh && N.decker && N.decker.onDeck(p)); // up on a double-decker's top deck: the camera follows him
     let dist = 30, th = 7.5;
     if (veh) {
-      dist = cls === 'bike' ? 34 : cls === 'auto' ? 40 : cls === 'heavy' ? 72 : cls === 'boat' ? 48 : 44;
-      th = cls === 'heavy' ? 18 : cls === 'bike' ? 8 : 10;
-      dist += Math.min(16, spd * 0.06);
+      dist = deck ? 50 : cls === 'bike' ? 34 : cls === 'auto' ? 40 : cls === 'heavy' ? 72 : cls === 'boat' ? 48 : 44;
+      th = deck ? N.decker.LAYOUT.floor + 5 : cls === 'heavy' ? 18 : cls === 'bike' ? 8 : 10;
+      dist += Math.min(deck ? 8 : 16, spd * 0.06);
+      if (deck) view.pitch = Math.max(view.pitch, 0.32); // above the walls, looking down into the deck
       // chase: swing behind the heading (unless the player is looking around)
       if (since > 1.0 && Math.abs(veh.speed || spd) > 6) {
         const k = 1 - Math.exp(-dt * 2.6 * U.clamp(spd / 60, 0.25, 1.2));
@@ -2475,9 +2587,9 @@
         view.yaw = approachAngle(view.yaw, face, k);
       }
     }
-    const look = veh ? Math.min(26, spd * 0.2) : 0;
+    const look = veh && !deck ? Math.min(26, spd * 0.2) : 0;
     const fw = veh ? veh.angle || 0 : view.yaw;
-    const tx = ex + Math.cos(fw) * look, ty = ey + Math.sin(fw) * look, tz = el + th;
+    const tx = (deck ? p.x : ex) + Math.cos(fw) * look, ty = (deck ? p.y : ey) + Math.sin(fw) * look, tz = el + th;
     const kT = CAM.snap ? 1 : 1 - Math.exp(-dt * 14);
     CAM.tgt.x += (tx - CAM.tgt.x) * kT; CAM.tgt.y += (tz - CAM.tgt.y) * kT; CAM.tgt.z += (ty - CAM.tgt.z) * kT;
     const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
@@ -2487,7 +2599,7 @@
     if (CAM.snap || free < CAM.distCur) CAM.distCur = free; else CAM.distCur += (free - CAM.distCur) * (1 - Math.exp(-dt * 2.2));
     const d = CAM.distCur;
     let px = CAM.tgt.x - Math.cos(view.yaw) * cp * d, py = CAM.tgt.y + sp * d, pz = CAM.tgt.z - Math.sin(view.yaw) * cp * d;
-    py = Math.max(py, el + 1.6);
+    py = Math.max(py, el + 1.6, terrH(px, pz) + 2.5);
     // screen shake from render.js (R.shake): reuse its offset
     if (R.camX != null && isFinite(R.camX)) { const sx2 = R.camX - R.cam.x, sy2 = R.camY - R.cam.y; if (Math.abs(sx2) > 0.8 || Math.abs(sy2) > 0.8) { px += sx2 * 0.35; py += sy2 * 0.2; } }
     cam.position.set(px, py, pz);
@@ -2564,7 +2676,7 @@
     const oProj = R.proj;
     R.proj = function (x, y, h) {
       if (!api.active) return oProj.apply(this, arguments);
-      const q = project(x, y, (h || 0) * 1.15);
+      const q = project(x, y, terrH(x, y) + (h || 0) * 1.15); // (2D heights are above the ground: the terrain under it)
       const r = rect2D || canvasRect;
       const sx = ((q.behind ? -9999 : q.x) - r.left) / r.width * R.W, sy = ((q.behind ? -9999 : q.y) - r.top) / r.height * R.H;
       return { x: sx, y: sy, k: 1 };
@@ -2594,7 +2706,9 @@
     if (!_ray.r) { _ray.r = new THREE.Raycaster(); _ray.v = new THREE.Vector2(); _ray.p = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); _ray.o = new THREE.Vector3(); }
     _ray.v.set((cx - canvasRect.left) / canvasRect.width * 2 - 1, -((cy - canvasRect.top) / canvasRect.height * 2 - 1));
     _ray.r.setFromCamera(_ray.v, E.camera);
-    const hit = _ray.r.ray.intersectPlane(_ray.p, _ray.o);
+    _ray.p.constant = -terrH(N.render.cam.x, N.render.cam.y);
+    let hit = _ray.r.ray.intersectPlane(_ray.p, _ray.o);
+    for (let k = 0; k < 2 && hit; k++) { _ray.p.constant = -terrH(hit.x, hit.z); hit = _ray.r.ray.intersectPlane(_ray.p, _ray.o); }
     return hit ? { x: hit.x, y: hit.z } : { x: N.render.cam.x, y: N.render.cam.y };
   }
 
@@ -2628,6 +2742,7 @@
     const t0 = now();
     const R = N.render, P = PROF.on;
     if (P) PROF.t = t0;
+    E.frameDt = dt || 0.016;
     UNI.uTime.value = (N.time.real || t0 / 1000) % 10000;
     // lights pushed by systems' draw() this frame (markers etc.) -> point light candidates
     updateCamera(dt);
@@ -2698,7 +2813,7 @@
     const sr = Q.shadows ? Q.shadowRange + 40 : -1;
     let vis = 0;
     for (const ch of chunks.values()) {
-      CULL.b.min.set(ch.x0 - 30, -2, ch.y0 - 30); CULL.b.max.set(ch.x0 + CH + 30, ch.top || 80, ch.y0 + CH + 30);
+      CULL.b.min.set(ch.x0 - 30, (ch.tmin || 0) - 4, ch.y0 - 30); CULL.b.max.set(ch.x0 + CH + 30, Math.max(ch.top || 80, (ch.tmax || 0) + 80), ch.y0 + CH + 30);
       let v = CULL.f.intersectsBox(CULL.b);
       if (!v && sr > 0 && rectDist(ch.x0, ch.y0, ch.x0 + CH, ch.y0 + CH, fx, fy) < sr) v = true;
       ch.group.visible = v;
@@ -2821,6 +2936,8 @@
 
   /* ================================================================ API */
   const api = (N.view3d = {
+    /** night lighting: how lit the player's spot is, the exposure the eye has adapted to, the lamp pools in use */
+    get nightState() { const LP = UNI.uLampP ? UNI.uLampP.value : []; return { lit: +NIGHT.lit.toFixed(3), expo: +(E.expo || 1).toFixed(3), pools: LP.filter((v) => v.w > 0).length, TUNE: NIGHT }; },
     ready: false,
     THREE: null,
     H, VS, CHUNK: CH, FLOOR_H,
@@ -2960,13 +3077,15 @@
     get mode() { return view.mode; },
     get quality() { return Q; },
     get uniforms() { return UNI; },
+    /** night lighting for a lit material's onBeforeCompile: H.lamps.apply(shader) (the lamp pools round the focus) */
+    lamps: LAMP_GLSL,
     get materials() { return MAT; },
     /** world (x, y, h) -> THREE.Vector3 */
     pos(x, y, h) { return new THREE.Vector3(x, h || 0, y); },
     /** place an object at world (x, y) facing world angle a */
     place(obj, x, y, h, a) { obj.position.set(x, h || 0, y); if (a != null) obj.rotation.y = -a; return obj; },
     yaw(a) { return -(a || 0); },
-    elev: elevation, heightAt,
+    elev: elevation, heightAt, terrainAt: terrH, terrainBase: terrBase, roofBase,
     builder(opts) { return new GB(opts); },
     merge: mergeGeometries,
     mat, color: (hex) => col(hex), tex, signSlot,

@@ -1153,13 +1153,18 @@
     const p = N.player, list = marksList().filter((m) => m.state !== 'done' && p && Math.hypot(m.x - p.x, m.y - p.y) < 1400).slice(0, 12);
     const t = H.time || 0, VS = H.VS || 1.5;
     const hAt = (x, y) => { try { return (H.heightAt ? H.heightAt(x, y) : 0) || 0; } catch (e) { return 0; } };
+    // [terrain] the ground's rise and fall under a mark (terrain.js via view3d.js; 0 when it is off)
+    const tAt = (x, y) => (H.terrainAt ? H.terrainAt(x, y) : 0), T = N.terrain;
     for (let i = 0; i < Math.max(list.length, V3.pool.length); i++) {
       const m = list[i];
       if (!m) { if (V3.pool[i]) V3.pool[i].grp.visible = false; continue; }
       const it = v3Item(i), next = m.state === 'next';
       it.grp.visible = true;
-      const y0 = hAt(m.x, m.y);
+      const hs = hAt(m.x, m.y), tg = tAt(m.x, m.y), y0 = hs + tg;
       it.grp.position.set(m.x, y0, m.y);
+      // the flat rings lie along the slope (not on a solid's top), so a wide one is not half under the road
+      const sl = !hs && T && T.ready && T.slopeAt ? T.slopeAt(m.x, m.y) : null;
+      it.ring.rotation.set(sl ? -Math.atan(sl.gy) : 0, 0, sl ? Math.atan(sl.gx) : 0); it.ring2.rotation.copy(it.ring.rotation);
       it.ring.material.color.set(m.color); it.ring2.material.color.set(m.color); it.band.material.color.set(m.color);
       const r = m.r;
       it.ring.scale.set(r, 1, r); it.ring.position.y = 0.35; it.ring.material.opacity = next ? 0.95 : 0.4;
@@ -1171,9 +1176,10 @@
       it.p1.visible = it.p2.visible = it.flag.visible = fin2;
       if (fin2) {
         const a = m.angle || 0, nx = -Math.sin(a), ny = Math.cos(a), hh = 12 * VS;
-        it.p1.position.set(nx * r, 0, ny * r); it.p2.position.set(-nx * r, 0, -ny * r);
+        const gb = Math.min(tAt(m.x + nx * r, m.y + ny * r), tAt(m.x - nx * r, m.y - ny * r)) - tg; // the gate on its low post's ground
+        it.p1.position.set(nx * r, gb, ny * r); it.p2.position.set(-nx * r, gb, -ny * r);
         it.p1.scale.set(1, hh, 1); it.p2.scale.set(1, hh, 1);
-        it.flag.position.set(0, hh - 2.2, 0); it.flag.scale.set(r * 2, 4.4, 1); it.flag.rotation.set(0, -a + Math.PI / 2, 0);
+        it.flag.position.set(0, hh - 2.2 + gb, 0); it.flag.scale.set(r * 2, 4.4, 1); it.flag.rotation.set(0, -a + Math.PI / 2, 0);
       }
       it.chit.visible = m.kind === 'chit' && next;
       if (it.chit.visible) { it.chit.position.set(0, 5 + Math.sin(t * 2.4) * 0.8, 0); it.chit.rotation.set(0, t * 1.4, Math.sin(t * 1.7) * 0.2); }

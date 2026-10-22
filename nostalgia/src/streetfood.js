@@ -2168,6 +2168,21 @@
   const V3 = { get active() { return !!(N.view3d && N.view3d.active); } };
   const G3 = { THREE: null, H: null, ready: false, grp: null, pts: null, spk: null, geo: {}, mat: {}, scenes: new Map(), ms: 0 };
   const SH = (o) => { if (o) { o.userData = o.userData || {}; o.userData.shared = true; } return o; };
+  // [terrain] the ground under a point (terrain.js via view3d.js; 0 while not ready), and the ground a scene's cart / stove
+  // stands on (once per scene): an extra cart's entity (sf:cart, drawn at H.elev), a landmark cart's base as the core lifts
+  // it (the low corner of its footprint), a hotel bhatti's footprint, else the ground under the stove. Stove heights (S.h),
+  // hand heights and particle heights stay over the ground: the 3D adds this
+  const TZ = (x, y) => (G3.H && G3.H.terrainAt ? G3.H.terrainAt(x, y) : 0);
+  function sceneBase(sc) {
+    if (sc.tb3 != null) return sc.tb3;
+    const H = G3.H, sp = sc.spot, S = sc.sl.stove3 || sc.sl.stove, TB = (x0, y0, x1, y1) => (H && H.terrainBase ? H.terrainBase(x0, y0, x1, y1) : 0);
+    let t;
+    if (sp.cartE) t = H && H.elev ? H.elev(sp.cartE) : 0;
+    else if (sp.lm && sp.K.type === 'cart') { const lm = sp.lm; t = TB(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2); }
+    else if (sp.art === 'rest' && S) t = TB(S.x - 3.4, S.y - 3.4, S.x + 3.4, S.y + 3.4);
+    else t = S ? TZ(S.x, S.y) : TZ(sc.F.cx, sc.F.cy);
+    return (sc.tb3 = t);
+  }
   function geo3(THREE) {
     const g = G3.geo;
     if (g.ready) return g;
@@ -2222,11 +2237,12 @@
     const night = clamp(H.night || 0, 0, 1), day = clamp(H.day == null ? 1 - night : H.day, 0, 1);
     const amb = 0.28 + 0.62 * day;
     let n = 0, m = 0;
-    const lamps = [];
-    for (const s of ACTIVE) { const S = stoveOf(s); if (S && (s.K.lamp || s.K.glow)) lamps.push(S.x, S.y, s.rain, s.uid); }
+    const lamps = [], tbs = [];
+    for (const s of ACTIVE) { const S = stoveOf(s); if (S && (s.K.lamp || s.K.glow)) lamps.push(S.x, S.y, s.rain, s.uid); tbs.push(s.uid, sceneBase(s)); }
     for (let i = 0; i < P.n; i++) {
       pState(i, PS);
-      const k = P.kind[i], x = P.x[i], y = P.y[i], h = P.h[i] * 1.12;
+      let tb = null; for (let j = 0; j < tbs.length; j += 2) if (tbs[j] === P.sc[i]) { tb = tbs[j + 1]; break; }
+      const k = P.kind[i], x = P.x[i], y = P.y[i], h = P.h[i] * 1.12 + (tb != null ? tb : TZ(x, y)); // [terrain]
       if (k === 2) {
         if (m >= 64) continue;
         kp[m * 3] = x; kp[m * 3 + 1] = h; kp[m * 3 + 2] = y;
@@ -2328,7 +2344,7 @@
     // shoulder in world space
     const a = e.angle || 0, c = Math.cos(a), s = Math.sin(a);
     const sx = e.x + c * 0.05 - s * 1.3 * side, sy = e.y + s * 0.05 + c * 1.3 * side, sh = el + 7.0;
-    const dx = hand.x - sx, dz = hand.y - sy, dy = hand.h * 1.0 + 0.4 - sh;
+    const dx = hand.x - sx, dz = hand.y - sy, dy = hand.h * 1.0 + 0.4 + (e.sc ? sceneBase(e.sc) : TZ(hand.x, hand.y)) - sh; // [terrain]
     const lx = dx * c + dz * s, lz = -dx * s + dz * c;
     const len = Math.hypot(lx, dy, lz) || 1;
     let th = Math.acos(clamp(-dy / len, -1, 1)), ph = Math.atan2(-lz, lx);
@@ -2442,16 +2458,16 @@
   function scene3d(sc, H) {
     const THREE = H.THREE, g = geo3(THREE), grp = new THREE.Group();
     const o = { grp, dosa: null, dosaMat: null, half: null, roll: null, bubbles: [], fries: [], stream: null, tarp: null, glow: null, glowL: null, own: [], extra: null };
-    const K = sc.K, S = sc.sl.stove3 || sc.sl.stove, w = K.vendor && K.vendor.work;
+    const K = sc.K, S = sc.sl.stove3 || sc.sl.stove, w = K.vendor && K.vendor.work, tb = (o.tb = sceneBase(sc)); // [terrain]
     if (S && w === 'dosa') {
       const dm = new THREE.MeshLambertMaterial({ color: '#f4ecd2' }); o.dosaMat = dm; o.own.push(dm);
-      o.dosa = new THREE.Mesh(g.disc, dm); o.dosa.position.set(S.x, S.h + 0.06, S.y); grp.add(o.dosa);
-      o.half = new THREE.Mesh(g.half, dm); o.half.position.set(S.x, S.h + 0.08, S.y); grp.add(o.half);
-      o.roll = new THREE.Mesh(g.roll, dm); o.roll.position.set(S.x, S.h + 0.35, S.y); grp.add(o.roll);
-      const bucket = new THREE.Mesh(g.cyl, M3('#b8bcc4')); const F = sc.F; bucket.scale.set(1.0, 1.4, 1.0); bucket.position.set(S.x - F.ax * 3.4 - F.nx * 1.2, S.h + 0.7, S.y - F.ay * 3.4 - F.ny * 1.2); grp.add(bucket);
+      o.dosa = new THREE.Mesh(g.disc, dm); o.dosa.position.set(S.x, S.h + 0.06 + tb, S.y); grp.add(o.dosa);
+      o.half = new THREE.Mesh(g.half, dm); o.half.position.set(S.x, S.h + 0.08 + tb, S.y); grp.add(o.half);
+      o.roll = new THREE.Mesh(g.roll, dm); o.roll.position.set(S.x, S.h + 0.35 + tb, S.y); grp.add(o.roll);
+      const bucket = new THREE.Mesh(g.cyl, M3('#b8bcc4')); const F = sc.F; bucket.scale.set(1.0, 1.4, 1.0); bucket.position.set(S.x - F.ax * 3.4 - F.nx * 1.2, S.h + 0.7 + tb, S.y - F.ay * 3.4 - F.ny * 1.2); grp.add(bucket);
     }
     if (S && w === 'fry') {
-      for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(g.ball, M3('#fff0b8', { emissive: '#7a5a20', emissiveIntensity: 0.3 })); m.position.set(S.x, S.h + 0.05, S.y); grp.add(m); o.bubbles.push(m); }
+      for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(g.ball, M3('#fff0b8', { emissive: '#7a5a20', emissiveIntensity: 0.3 })); m.position.set(S.x, S.h + 0.05 + tb, S.y); grp.add(m); o.bubbles.push(m); }
       for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(g.tet, M3('#d8a040')); m.scale.setScalar(0.5); grp.add(m); o.fries.push(m); }
     }
     if (w === 'chai') { o.stream = new THREE.Mesh(g.cyl, M3('#a8702e')); o.stream.visible = false; grp.add(o.stream); }
@@ -2461,28 +2477,30 @@
       const cu = 0, cv = (F.hw + 8.6 - F.hw - 1.2) / 2;
       tm.position.set(fx(F, cu, cv), 15.4, fy(F, cu, cv)); tm.rotation.y = -Math.atan2(F.ay, F.ax); tm.rotation.x = 0.05;
       tg.add(tm);
-      for (const [u, v] of [[-F.hl - 1.5, -F.hw - 1.2], [F.hl + 1.5, -F.hw - 1.2], [-F.hl - 1.5, F.hw + 8.6], [F.hl + 1.5, F.hw + 8.6]]) { const p = new THREE.Mesh(g.cyl, M3('#5a5a62')); p.scale.set(0.18, 15.4, 0.18); p.position.set(fx(F, u, v), 7.7, fy(F, u, v)); tg.add(p); }
+      let tt = Infinity;
+      for (const [u, v] of [[-F.hl - 1.5, -F.hw - 1.2], [F.hl + 1.5, -F.hw - 1.2], [-F.hl - 1.5, F.hw + 8.6], [F.hl + 1.5, F.hw + 8.6]]) { const p = new THREE.Mesh(g.cyl, M3('#5a5a62')); p.scale.set(0.18, 15.4, 0.18); p.position.set(fx(F, u, v), 7.7, fy(F, u, v)); tg.add(p); tt = Math.min(tt, TZ(fx(F, u, v), fy(F, u, v))); }
+      tg.position.y = tt; // [terrain] rigid, on the low side of its poles
       tg.visible = false; grp.add(tg); o.tarp = tg;
     }
     // carts that only 2D art draws (school gate carts) / the hotels' haleem bhatti
-    if (sc.spot.kind === 'gate') { const m = cartModel(H, season('summer') ? 'gola' : 'peanut', 3.2, 1.9, {}); m.position.set(sc.F.cx, 0, sc.F.cy); m.rotation.y = -Math.atan2(sc.F.ay, sc.F.ax); m.scale.set(0.85, 0.9, 0.85); grp.add(m); o.extra = m; }
+    if (sc.spot.kind === 'gate') { const m = cartModel(H, season('summer') ? 'gola' : 'peanut', 3.2, 1.9, {}); m.position.set(sc.F.cx, TZ(sc.F.cx, sc.F.cy), sc.F.cy); m.rotation.y = -Math.atan2(sc.F.ay, sc.F.ax); m.scale.set(0.85, 0.9, 0.85); grp.add(m); o.extra = m; }
     if (sc.spot.art === 'rest' && S) {
       const b = H.builder();
       b.color('#9a4a2a').box(S.x - 3.4, 0, S.y - 3.4, S.x + 3.4, 4.4, S.y + 3.4).color('#c87a3a').cyl(S.x, 4.4, S.y, 2.8, 3.0, 2.6, 14).color('#5a3a1a').cyl(S.x, 7.0, S.y, 2.5, 2.5, 0.05, 14);
-      const m = b.mesh(); if (m) grp.add(m);
+      const m = b.mesh(); if (m) { m.position.y = tb; grp.add(m); }
     }
-    if (S && K.glow) { o.glow = H.glow(K.glow, 10); o.glow.position.set(S.x, S.h + 0.8, S.y); o.glow.material.opacity = 0; grp.add(o.glow); o.own.push(o.glow.material); }
-    if (K.lamp === 'tube') { const F = sc.F; o.glowL = H.glow('#e8f4ff', 16); o.glowL.position.set(F.cx + F.nx * 2, 14, F.cy + F.ny * 2); o.glowL.material.opacity = 0; grp.add(o.glowL); o.own.push(o.glowL.material); }
+    if (S && K.glow) { o.glow = H.glow(K.glow, 10); o.glow.position.set(S.x, S.h + 0.8 + tb, S.y); o.glow.material.opacity = 0; grp.add(o.glow); o.own.push(o.glow.material); }
+    if (K.lamp === 'tube') { const F = sc.F; o.glowL = H.glow('#e8f4ff', 16); o.glowL.position.set(F.cx + F.nx * 2, 14 + tb, F.cy + F.ny * 2); o.glowL.material.opacity = 0; grp.add(o.glowL); o.own.push(o.glowL.material); }
     return o;
   }
   const _q = { a: null, b: null, q: null };
   function update3dScene(sc, o, H) {
-    const v = sc.vendor, S = stoveOf(sc), t = simT(), night = clamp(H.night || 0, 0, 1);
+    const v = sc.vendor, S = stoveOf(sc), t = simT(), night = clamp(H.night || 0, 0, 1), tb = o.tb || 0;
     if (o.dosa && v) {
       const D = v.dosa, on = D.on && !v.hidden;
       const r = DOSA_R * 1.05 * D.r, col = DOSA_COL(D.brown * 0.85 + D.oil * 0.1);
       o.dosaMat.color.set(col);
-      let cx = S.x, cy = S.y, hh = S.h + 0.06;
+      let cx = S.x, cy = S.y, hh = S.h + 0.06 + tb;
       if (v.ph === 'serve') { const c = sc.sl.counter, l = smooth(D.lift || 0) * 0.8; cx = lerp(S.x, c.x, l); cy = lerp(S.y, c.y, l); hh += Math.sin((D.lift || 0) * PI) * 1.4; }
       const f = D.fold, ang = -Math.atan2(sc.F.ay, sc.F.ax);
       o.dosa.visible = on && f < 0.05; o.dosa.position.set(cx, hh, cy); o.dosa.scale.setScalar(Math.max(0.01, r));
@@ -2490,9 +2508,9 @@
       o.roll.visible = on && f >= 0.6; o.roll.position.set(cx, hh + 0.3, cy); o.roll.rotation.y = ang; o.roll.scale.set(r * 2.1, r * 0.34, r * 0.34);
     }
     if (o.bubbles.length && S) {
-      for (let i = 0; i < o.bubbles.length; i++) { const a = t * 2.2 + i * 1.25, rr2 = 0.5 + (i % 3) * 0.45, b = (Math.sin(t * 9 + i * 1.7) + 1) * 0.5; const m = o.bubbles[i]; m.position.set(S.x + Math.cos(a) * rr2, S.h + 0.05, S.y + Math.sin(a) * rr2); m.scale.setScalar(0.1 + b * 0.22); }
+      for (let i = 0; i < o.bubbles.length; i++) { const a = t * 2.2 + i * 1.25, rr2 = 0.5 + (i % 3) * 0.45, b = (Math.sin(t * 9 + i * 1.7) + 1) * 0.5; const m = o.bubbles[i]; m.position.set(S.x + Math.cos(a) * rr2, S.h + 0.05 + tb, S.y + Math.sin(a) * rr2); m.scale.setScalar(0.1 + b * 0.22); }
       const fry = v && v.batch && v.ph !== 'serve' && v.ph !== 'lift';
-      for (let i = 0; i < o.fries.length; i++) { const m = o.fries[i]; m.visible = !!fry; if (fry) { const a = t * 0.8 + i * 1.6; m.position.set(S.x + Math.cos(a) * 1.0, S.h + 0.15, S.y + Math.sin(a) * 1.0); m.rotation.set(t + i, t * 0.7, 0); } }
+      for (let i = 0; i < o.fries.length; i++) { const m = o.fries[i]; m.visible = !!fry; if (fry) { const a = t * 0.8 + i * 1.6; m.position.set(S.x + Math.cos(a) * 1.0, S.h + 0.15 + tb, S.y + Math.sin(a) * 1.0); m.rotation.set(t + i, t * 0.7, 0); } }
     }
     if (o.stream && v) {
       const H2 = v.hands, show = H2.tip === 'stream' && v.pour > 0.05 && !v.hidden;
@@ -2500,7 +2518,7 @@
       if (show) {
         const THREE = H.THREE;
         if (!_q.a) { _q.a = new THREE.Vector3(); _q.b = new THREE.Vector3(); _q.q = new THREE.Vector3(0, 1, 0); }
-        const a = _q.a.set(H2.r.x, H2.r.h + 0.2, H2.r.y), b = _q.b.set(H2.l.x, H2.l.h + 0.7, H2.l.y);
+        const a = _q.a.set(H2.r.x, H2.r.h + 0.2 + tb, H2.r.y), b = _q.b.set(H2.l.x, H2.l.h + 0.7 + tb, H2.l.y);
         const len = a.distanceTo(b);
         o.stream.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
         o.stream.scale.set(0.12 + v.pour * 0.08, len, 0.12 + v.pour * 0.08);

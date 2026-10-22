@@ -1340,41 +1340,44 @@
       for (let k = 0; k < 16; k++) arr.push(m.elements[k]);
     };
     const pushC = (arr, hex) => { col.set(hex); arr.push(col.r, col.g, col.b); };
+    // the ground under a pole (terrain.js via view3d.js); along a span, the line between its two ends' ground
+    const TZ = H.terrainAt || null, tz = (x, y) => (TZ ? TZ(x, y) : 0);
+    const spT = (sp, t) => { const a = tz(sp.ax, sp.ay); return a + (tz(sp.bx, sp.by) - a) * t; };
     const gb = H.builder();
     let extrasN = 0;
     for (const cell of cells) {
       for (const pl of cell.poles) {
-        const F = poleFrame(pl, vs), mid = F ? F.id : '', md = F ? F.md : null;
+        const F = poleFrame(pl, vs), mid = F ? F.id : '', md = F ? F.md : null, t0 = tz(pl.x, pl.y);
         if (F) { // a Blender pole: its own crossarms / fittings (lamp for pole_streetlight, H-frame for the transformer)
-          if (mid !== 'pole_transformer') { const arr = out.pm[mid] || (out.pm[mid] = []); pushM(arr, F.x, 0, F.y, F.ang, 1, F.sy, 1); }
+          if (mid !== 'pole_transformer') { const arr = out.pm[mid] || (out.pm[mid] = []); pushM(arr, F.x, t0, F.y, F.ang, 1, F.sy, 1); }
         } else {
           const sc = pl.kind === 'rail' ? [0.45, 0.55] : pl.kind === 'tube' ? [0.6, 0.6] : [0.78, 0.52];
-          pushM(out.pole, pl.x, 0, pl.y, pl.ang, sc[0], pl.h * vs + 0.6, sc[1]);
+          pushM(out.pole, pl.x, t0, pl.y, pl.ang, sc[0], pl.h * vs + 0.6, sc[1]);
           pushC(out.poleC, POLE_COL3[pl.kind]);
-          for (const hh of [pl.hHT, pl.hLT]) if (hh) pushM(out.head, pl.x + pl.onx * pl.shift, hh * vs, pl.y + pl.ony * pl.shift, pl.ang, 1, 1, 1);
+          for (const hh of [pl.hHT, pl.hLT]) if (hh) pushM(out.head, pl.x + pl.onx * pl.shift, hh * vs + t0, pl.y + pl.ony * pl.shift, pl.ang, 1, 1, 1);
         }
         if (pl.lamp) {
           const lampModel = md && mid === 'pole_streetlight';
           if (!lampModel) {
-            pushM(out.lamp, pl.x, pl.lamp.h * vs, pl.y, pl.ang + (pl.onx * -pl.uy + pl.ony * pl.ux > 0 ? 0 : Math.PI), 1, 1, 1);
+            pushM(out.lamp, pl.x, pl.lamp.h * vs + t0, pl.y, pl.ang + (pl.onx * -pl.uy + pl.ony * pl.ux > 0 ? 0 : Math.PI), 1, 1, 1);
             pushC(out.lampC, pl.lamp.tube ? '#d8f4ff' : '#ffab40');
           }
           const la = lampModel ? anchorPos([pl, 'wire_lamp', 0], vs, [0, 0, 0]) : null;
-          const gy = la ? la[1] : pl.lamp.h * vs + 1.25;
+          const gy = (la ? la[1] : pl.lamp.h * vs + 1.25) + t0;
           if (la) out.glow.push(la[0], gy, la[2]); else out.glow.push(pl.lamp.x, gy, pl.lamp.y);
           if (pl.lamp.tube) out.glowC.push(0.75, 0.92, 1.0); else out.glowC.push(1.0, 0.62, 0.25);
           out.lamps.push([pl.lamp.x, gy - 1, pl.lamp.y, pl.lamp.tube ? '#d8f4ff' : '#ffab40']);
         }
-        if (pl.coil) { gb.color('#121010'); ring(gb, pl.x + pl.onx * 1.0, 24.5 * vs, pl.y + pl.ony * 1.0, 1.6, 0.25, pl.ang); extrasN++; }
-        if (pl.kite && pl.kite.kh < V.kiteShare) { poleKite3(gb, pl, vs); extrasN++; }
+        if (pl.coil) { gb.color('#121010'); ring(gb, pl.x + pl.onx * 1.0, 24.5 * vs + t0, pl.y + pl.ony * 1.0, 1.6, 0.25, pl.ang); extrasN++; }
+        if (pl.kite && pl.kite.kh < V.kiteShare) { poleKite3(gb, pl, vs, t0); extrasN++; }
       }
       for (const t of cell.tx) {
         // instance at the hub pole, local +x along the road towards the second pole
         if (modelGeo('pole_transformer')) { // the H-frame model replaces the hub pole + the procedural tank
           const F = poleFrame(t.pole, vs);
-          if (F && F.id === 'pole_transformer') { const arr = out.pm[F.id] || (out.pm[F.id] = []); pushM(arr, F.x, 0, F.y, F.ang, 1, F.sy, 1); continue; }
+          if (F && F.id === 'pole_transformer') { const arr = out.pm[F.id] || (out.pm[F.id] = []); pushM(arr, F.x, tz(F.x, F.y), F.y, F.ang, 1, F.sy, 1); continue; }
         }
-        pushM(out.tx, t.x, 0, t.y, Math.atan2(t.y2 - t.y, t.x2 - t.x), 1, 1, 1);
+        pushM(out.tx, t.x, tz(t.x, t.y), t.y, Math.atan2(t.y2 - t.y, t.x2 - t.x), 1, 1, 1);
       }
       for (const sp of cell.spans) {
         const w = sp.kind === 'cable' ? 0.2 : sp.kind === 'power' ? 0.15 : 0.12;
@@ -1384,19 +1387,20 @@
         // the low point (the clearance the generator checked) does not drop
         const dA = A ? sp.ah * vs - A[1] : 0, dB = B ? sp.bh * vs - B[1] : 0;
         const sag3 = Math.max(0.05, sp.sag * vs - Math.max(0, dA, dB));
-        out.wire.push(A ? A[0] : sp.ax, A ? A[1] : sp.ah * vs, A ? A[2] : sp.ay, w, B ? B[0] : sp.bx, B ? B[1] : sp.bh * vs, B ? B[2] : sp.by, sag3, col.r, col.g, col.b, sp.ph);
+        out.wire.push(A ? A[0] : sp.ax, (A ? A[1] : sp.ah * vs) + spT(sp, 0), A ? A[2] : sp.ay, w, B ? B[0] : sp.bx, (B ? B[1] : sp.bh * vs) + spT(sp, 1), B ? B[2] : sp.by, sag3, col.r, col.g, col.b, sp.ph);
       }
       if (V.kiteShare > 0) {
         for (const th of cell.threads) {
           if (th.kh >= V.kiteShare) continue;
           threadPts(th, th.drop ? 1 : 2, tmpArr);
           col.set(th.col);
-          if (th.drop) out.wire.push(tmpArr[0], tmpArr[2] * vs, tmpArr[1], 0.06, tmpArr[3], tmpArr[5] * vs, tmpArr[4], 0.2, col.r, col.g, col.b, th.ph);
-          else { const a = pointAt(th.sp, th.t, {}), b = pointAt(th.sp, th.t2, {}); out.wire.push(a.x, a.h * vs, a.y, 0.06, b.x, b.h * vs, b.y, th.sag * vs, col.r, col.g, col.b, th.ph); }
+          const tt = spT(th.sp, th.t);
+          if (th.drop) out.wire.push(tmpArr[0], tmpArr[2] * vs + tt, tmpArr[1], 0.06, tmpArr[3], tmpArr[5] * vs + tt, tmpArr[4], 0.2, col.r, col.g, col.b, th.ph);
+          else { const a = pointAt(th.sp, th.t, {}), b = pointAt(th.sp, th.t2, {}); out.wire.push(a.x, a.h * vs + tt, a.y, 0.06, b.x, b.h * vs + spT(th.sp, th.t2), b.y, th.sag * vs, col.r, col.g, col.b, th.ph); }
         }
-        for (const kt of cell.kites) if (kt.kh < V.kiteShare) { kite3(gb, kt, vs); extrasN++; }
+        for (const kt of cell.kites) if (kt.kh < V.kiteShare) { kite3(gb, kt, vs, spT(kt.sp, kt.t)); extrasN++; }
       }
-      for (const ch of cell.chappals) { chappal3(gb, ch, vs); extrasN++; }
+      for (const ch of cell.chappals) { chappal3(gb, ch, vs, spT(ch.sp, ch.t)); extrasN++; }
     }
     if (extrasN) {
       const g = gb.build();
@@ -1424,17 +1428,17 @@
     const i = gb.v(a[0], a[1], a[2], nx / l, ny / l, nz / l); gb.v(b[0], b[1], b[2], nx / l, ny / l, nz / l); gb.v(c[0], c[1], c[2], nx / l, ny / l, nz / l);
     gb.tri(i, i + 1, i + 2);
   }
-  function kite3(gb, kt, vs) {
+  function kite3(gb, kt, vs, tg) {
     kiteCorners(kt, KC);
-    const P = (q) => [KC[q], KC[q + 2] * vs, KC[q + 1]];
+    const P = (q) => [KC[q], KC[q + 2] * vs + (tg || 0), KC[q + 1]];
     const T = P(0), L = P(3), B = P(6), R = P(9), Cm = [(T[0] + B[0]) / 2, (T[1] + B[1]) / 2, (T[2] + B[2]) / 2];
     gb.color(kt.c1); tri3(gb, T, L, kt.torn > 0.75 ? Cm : B);
     gb.color(kt.c2); tri3(gb, T, R, kt.torn > 0.45 ? Cm : B);
     gb.color('#3a2c20'); tri3(gb, T, [T[0] + 0.12, T[1], T[2]], kt.torn > 0.75 ? Cm : B);
     if (kt.tail && kt.torn <= 0.75) { gb.color(kt.c2); tri3(gb, B, [B[0] + 0.5, B[1] - 4.5, B[2] + 0.3], [B[0] - 0.4, B[1] - 4.2, B[2] - 0.2]); }
   }
-  function poleKite3(gb, pl, vs) {
-    const K = pl.kite, h = ((pl.hLT || pl.hHT) + 0.3) * vs, s = K.size;
+  function poleKite3(gb, pl, vs, tg) {
+    const K = pl.kite, h = ((pl.hLT || pl.hHT) + 0.3) * vs + (tg || 0), s = K.size;
     const x = pl.x + pl.onx * K.off, y = pl.y + pl.ony * K.off;
     const P = (dx, dy, dh) => [x + dx, h + dh * vs, y + dy];
     const ax = pl.ux * s * 0.5, ay = pl.uy * s * 0.5, bx = pl.onx * s * 0.5, by = pl.ony * s * 0.5;
@@ -1442,11 +1446,11 @@
     gb.color(K.c1); tri3(gb, T, L, B);
     if (K.torn < 0.6) { gb.color(K.c2); tri3(gb, T, R, B); }
   }
-  function chappal3(gb, ch, vs) {
+  function chappal3(gb, ch, vs, tg) {
     const sp = ch.sp, pt = pointAt(sp, ch.t, {});
     const ux = (sp.bx - sp.ax) / (sp.len || 1), uy = (sp.by - sp.ay) / (sp.len || 1), ang = Math.atan2(uy, ux);
     for (const o of [-0.8, 0.8]) {
-      const x = pt.x + ux * o, y = pt.y + uy * o, top = pt.h * vs - 0.3, bot = top - ch.drop * vs;
+      const x = pt.x + ux * o, y = pt.y + uy * o, top = pt.h * vs - 0.3 + (tg || 0), bot = top - ch.drop * vs;
       gb.color('#e6e0d2').obox(x, y, 0.35, 1.1, bot, top - 0.4, ang + Math.PI / 2);
       gb.color(ch.col).obox(x, y, 0.5, 0.7, top - 1.2, top, ang + Math.PI / 2);
     }
@@ -1607,7 +1611,7 @@
     if (night > 0.1 && V.lampList.length) {
       let best = null, bd = 230;
       for (const l of V.lampList) { const d = Math.hypot(l[0] - f.x, l[2] - f.y); if (d < bd) { bd = d; best = l; } }
-      if (best) H.light({ x: best[0], y: best[2], h: best[1], color: best[3], intensity: 0.8, r: 70 });
+      if (best) H.light({ x: best[0], y: best[2], h: best[1], abs: true, color: best[3], intensity: 0.8, r: 70 }); // (h has the terrain in it)
     }
     V.lastJs = now() - t0;
     V.jsAvg = V.jsAvg * 0.95 + V.lastJs * 0.05;

@@ -3691,7 +3691,7 @@
     if (pr.kind === 'pedal') return 'bell';
     if (t === 'auto') return 'auto_horn';
     if (/luna|chetak|rx100|scooter|scooty|bike|moped/.test(t) || pr === ENGINES.scooty) return 'scooter_horn';
-    if (t === 'bus') return 'bus_horn';
+    if (t === 'bus' || t === 'decker_bus') return 'bus_horn';
     if (t === 'lorry' || /truck|tractor/.test(t)) return 'lorry_horn';
     if (t === 'boat') return 'bus_horn';
     return 'car_horn';

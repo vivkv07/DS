@@ -6,7 +6,8 @@
  *   patchMaterial(material, opts) -> material     3D: add the shared wind sway to any three.js material
  *       (vertex shader: a world-space offset applied AFTER instancing, at #include <project_vertex>;
  *       per-instance phase from the instance translation, the gust wave of N.wind.GLSL at the instance).
- *       opts: weight  'height' (default)  weight = amp * ((worldY - base) / height) ^ flex   (trees)
+ *       opts: weight  'height' (default)  weight = amp * ((worldY - ground - base) / height) ^ flex   (trees; ground =
+ *                                         the terrain under the instance origin, terrain.js)
  *                     'attr'              weight = amp * windW * instanceScaleY            (Blender models:
  *                                         the vertex attribute `windW`, see windWeights())
  *                     'color'             baked vertex colour wind data (not a tint): R = bend weight (0 base ..
@@ -86,7 +87,13 @@
   // GLSL helpers after N.wind.GLSL (uWind, uWindWave, windGust, windOffset)
   const WFX_GLSL = [
     'uniform vec4 uWindFx;   // x amp (u), y height (u), z flex, w flutter (u)',
-    'uniform vec4 uWindFx2;  // x tip stream (u), y base height (u)',
+    'uniform vec4 uWindFx2;  // x tip stream (u), y base height (u, above the ground)',
+    '#if WFX_MODE == 0',
+    // [terrain] the ground's height (terrain.js nodes as a texture): the height weight counts from the ground under the
+    // instance, not from y = 0 (trees on the Jubilee Hills ridge stand ~120 u up, by the Musi ~40 u down)
+    'uniform sampler2D uWfxTer; uniform vec4 uWfxTerM; uniform vec2 uWfxTerK;',
+    'float wfxGround(vec2 xz) { return texture2D(uWfxTer, xz * uWfxTerM.xy + uWfxTerM.zw).r * uWfxTerK.y + uWfxTerK.x; }',
+    '#endif',
     '#if defined(WFX_ATTR)',
     'attribute float windW;',
     '#endif',
@@ -148,7 +155,7 @@
     '  #elif WFX_MODE == 2',
     '    float wfxW = pow(clamp(-position.y, 0.0, 1.0), uWindFx.z) * uWindFx.x;',
     '  #else',
-    '    float wfxW = pow(max(wfxP.y - uWindFx2.y, 0.0) / uWindFx.y, uWindFx.z) * uWindFx.x;',
+    '    float wfxW = pow(max(wfxP.y - uWindFx2.y - wfxGround(wfxOrg.xz), 0.0) / uWindFx.y, uWindFx.z) * uWindFx.x;',
     '  #endif',
     '  wfxW *= 1.0 + 0.85 * uWind.z;   // storms bend harder than linear (same as the 2D amplitude)',
     '  vec3 wfxOff = windOffset(wfxOrg, wfxW, wfxPh);',
@@ -175,10 +182,31 @@
   ].join('\n');
   const MODES = { height: 0, attr: 1, hang: 2, flag: 3, color: 4 };
 
+  // [terrain] the ground texture for the 'height' weight: one texel per terrain.js node (75 u), linear filtering, the
+  // height in R (0..255 over the terrain's range); a 1 x 1 zero ground without terrain.js
+  let TERU = null;
+  function terrainUniforms(THREE) {
+    if (TERU) return TERU;
+    const T = N.terrain, d = T && T.ready && T.data;
+    let tex = null, m = [0, 0, 0.5, 0.5], k = [0, 0];
+    if (d && d.cols > 1 && d.rows > 1) {
+      const n = d.cols * d.rows, hv = new Float32Array(n), px = new Uint8Array(n * 4);
+      let lo = Infinity, hi = -Infinity;
+      for (let j = 0; j < d.rows; j++) for (let i = 0; i < d.cols; i++) { const v = T.heightAt(i * d.step, j * d.step); hv[j * d.cols + i] = v; if (v < lo) lo = v; if (v > hi) hi = v; }
+      const sc = Math.max(1e-3, (hi - lo) / 255);
+      for (let i = 0; i < n; i++) { px[i * 4] = Math.round((hv[i] - lo) / sc); px[i * 4 + 3] = 255; }
+      tex = new THREE.DataTexture(px, d.cols, d.rows, THREE.RGBAFormat);
+      m = [1 / (d.step * d.cols), 1 / (d.step * d.rows), 0.5 / d.cols, 0.5 / d.rows]; k = [lo, sc * 255];
+    } else tex = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
+    tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    TERU = { uWfxTer: { value: tex }, uWfxTerM: { value: new THREE.Vector4(m[0], m[1], m[2], m[3]) }, uWfxTerK: { value: new THREE.Vector2(k[0], k[1]) } };
+    return TERU;
+  }
   function windfxCompile(shader, ud) {
     const U2 = WI.uniforms(window.THREE);
     shader.uniforms.uWind = U2.uWind; shader.uniforms.uWindWave = U2.uWindWave;
     shader.uniforms.uWindFx = ud.uWindFx; shader.uniforms.uWindFx2 = ud.uWindFx2;
+    if (ud.mode === 0) Object.assign(shader.uniforms, terrainUniforms(window.THREE));
     let vs = shader.vertexShader;
     if (ud.strip) vs = vs.replace(ud.strip, '');
     const defs = '#define WFX_MODE ' + ud.mode + '\n' + (ud.attr ? '#define WFX_ATTR\n' : '') + (ud.tipAttr ? '#define WFX_TIPATTR\n' : '');
@@ -644,7 +672,8 @@
     const poles = new THREE.InstancedMesh(poleGeo, H.mat('#8a7a62'), Math.max(1, fl.length));
     poles.count = fl.length;
     const m = new THREE.Matrix4(), c = new THREE.Color();
-    fl.forEach((f, i) => { m.makeScale(1, f.h * VS + 1.5, 1); m.setPosition(f.x, 0, f.y); poles.setMatrixAt(i, m); });
+    const tg = fl.map((f) => (H.terrainAt ? H.terrainAt(f.x, f.y) : 0)); // [terrain] each pole on the ground under it
+    fl.forEach((f, i) => { m.makeScale(1, f.h * VS + 1.5, 1); m.setPosition(f.x, tg[i], f.y); poles.setMatrixAt(i, m); });
     poles.instanceMatrix.needsUpdate = true; poles.frustumCulled = false; poles.castShadow = false; // thin poles: no shadow pass (keeps the layer at <= 3 draw calls) poles.name = 'windfx-flagpoles';
     H.layer.add(poles); L3.flagPoles = poles;
     // one cloth mesh for every flag (the taper of the temple pennants rides in the instance scale z) and, after
@@ -657,7 +686,7 @@
     cloth.setColorAt(0, c.set('#ffffff'));
     fl.forEach((f, i) => {
       const w = f.wid * VS * 0.55, len = f.len * VS * 0.75;
-      m.makeScale(len, w, 1 + (f.tri ? 0.92 : 0)); m.setPosition(f.x, f.h * VS + 1.2 - w * 0.5, f.y);
+      m.makeScale(len, w, 1 + (f.tri ? 0.92 : 0)); m.setPosition(f.x, tg[i] + f.h * VS + 1.2 - w * 0.5, f.y);
       cloth.setMatrixAt(i, m); c.set(f.color); cloth.setColorAt(i, c);
     });
     cloth.instanceMatrix.needsUpdate = true; if (cloth.instanceColor) cloth.instanceColor.needsUpdate = true;
@@ -678,9 +707,12 @@
     const VS = H.VS, base = L3.clothBase || 0;
     let n = base;
     const lines = [];
+    // [terrain] the roof stands on the structure's base as view3d.js lifts it (a bldg: the low corner of its footprint;
+    // a roof zone: the building's under it, H.roofBase)
+    const sBase = (s) => (s.x != null && s.w != null && s.d != null && H.terrainBase ? H.terrainBase(s.x, s.y, s.x + s.w, s.y + s.d) : H.terrainAt ? H.terrainAt(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y) : 0);
     N.world.queryStructures(fx - CLOTH_R, fy - CLOTH_R, fx + CLOTH_R, fy + CLOTH_R, (s) => {
-      if (s.t === 'bldg') { if (s.roofType !== 'flat') return; const L = bldgLine(s); if (L) lines.push([L, s.h * VS, (s.cx - fx) ** 2 + (s.cy - fy) ** 2]); }
-      else if (s.t === 'roofzone' && s.roof && !s.roof.lm && s.roof.line && s.roof.line._cl) lines.push([s.roof.line, s.roof.h * VS, (s.cx - fx) ** 2 + (s.cy - fy) ** 2]);
+      if (s.t === 'bldg') { if (s.roofType !== 'flat') return; const L = bldgLine(s); if (L) lines.push([L, s.h * VS + sBase(s), (s.cx - fx) ** 2 + (s.cy - fy) ** 2]); }
+      else if (s.t === 'roofzone' && s.roof && !s.roof.lm && s.roof.line && s.roof.line._cl) lines.push([s.roof.line, s.roof.h * VS + (H.roofBase ? H.roofBase(s.roof) : sBase(s)), (s.cx - fx) ** 2 + (s.cy - fy) ** 2]);
     });
     lines.sort((a, b) => a[2] - b[2]);
     const put = (x, y, z, yaw, sx, sy, hex) => {
@@ -730,7 +762,7 @@
     const col = new THREE.Color();
     for (let k = 0; k < ks.length; k++) {
       const q = ks[k];
-      const kh = q.h * VS - 5.4;
+      const kh = q.h * VS - 5.4 + (H.terrainAt ? H.terrainAt(q.x, q.y) : 0); // [terrain] the kite's height above the ground under it
       tailPoints(q.x, q.y, kh, k * 1.37, TAIL_N, 2.6, TP3);
       col.set(KCOL[(k + 3) % KCOL.length]); // = view3d_actors' second kite colour
       for (let i = 0; i <= TAIL_N; i++) {
