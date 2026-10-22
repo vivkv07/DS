@@ -289,9 +289,24 @@ function pageHelper() {
   /** third person on foot: ease the camera yaw towards the route ahead (R.cam {x, y}): GTA-like, no spins */
   R.camHook = function (ms) {
     const C = R.cam;
-    if (!C.on || !N.view || N.view.mode !== 'tps') return;
+    if (!N.view || N.view.mode !== 'tps') return;
     const p = N.player;
-    if (!p || p.vehicle || p.hidden) return;
+    // a story ride in an auto / a bus (he is hidden inside it; the game's camera would sit inside it): a tracking shot from
+    // beside it, on the side with more room
+    if (C.ride && p && p.hidden) {
+      let v = null, bd = 12;
+      for (const e of N.entities.query(p.x, p.y, 12)) if (e.kind === 'vehicle' && e.alive !== false && e.T && (e.T.w || 0) > 12) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; v = e; } }
+      if (!v) return;
+      if (C.rideV !== v) { C.rideV = v; const f = R.freeFn(p); C.rideSide = f(v.angle + Math.PI / 2, 40) >= f(v.angle - Math.PI / 2, 40) ? -1 : 1; }
+      const want = v.angle + C.rideSide * 1.25, dt = ms / 1000;
+      let st = wrapA(want - N.view.yaw) * (1 - Math.exp(-dt * 2.2));
+      const mx = 1.4 * dt; if (st > mx) st = mx; if (st < -mx) st = -mx;
+      N.view.yaw = wrapA(N.view.yaw + st);
+      return;
+    }
+    if (!C.on) return;
+    // (on a vehicle only a fixed yaw, and only while it stands: moving, the game's chase camera owns the yaw)
+    if (!p || p.hidden || (p.vehicle && (C.yaw == null || Math.abs(p.vehicle.speed || 0) > 3))) return;
     let want;
     if (C.yaw != null) { if (N.state.mode !== 'play' && N.state.mode !== 'dialogue') return; want = C.yaw; }
     else {
@@ -342,7 +357,7 @@ function pageHelper() {
    *  room behind it -> {yaw, d, npc} | null (no such speaker near: keep the camera) */
   R.frameTalk = function (spk) {
     const p = N.player, V3 = N.view3d;
-    if (!p || p.vehicle || p.hidden || !N.view || N.view.mode !== 'tps' || !V3 || !V3.heightAt) return null;
+    if (!p || p.hidden || (p.vehicle && Math.abs(p.vehicle.speed || 0) > 3) || !N.view || N.view.mode !== 'tps' || !V3 || !V3.heightAt) return null;
     if (!spk || /^(chinnu|you|srikanth|narrator|immu_tape)$/.test(spk)) return null;
     let e = null, bd = 120;
     for (const q of N.entities.query(p.x, p.y, 120)) {
@@ -907,7 +922,7 @@ async function startCam(label) {
 async function openCam(snap, minAhead) {
   const r = await ev(([snap, minAhead]) => {
     const R = window.__R, o = R.openYaw();
-    if (!o || N.view.mode !== 'tps' || N.player.vehicle) return null;
+    if (!o || N.view.mode !== 'tps' || (N.player.vehicle && Math.abs(N.player.vehicle.speed || 0) > 3)) return null;
     if (o.ahead >= minAhead && o.behind >= 20) return { keep: true, o };
     if (snap) { N.view.yaw = o.yaw; if (N.view3d.snapCamera) N.view3d.snapCamera(); } else { R.cam.on = true; R.cam.yaw = o.yaw; }
     return { o };
@@ -1049,7 +1064,7 @@ async function travel(tx, ty, o) {
 }
 /** first person for a few seconds of a cycle ride (once per chapter where asked) */
 async function fpsRideCheck(st) {
-  if (TL.fpsDone || st.rem < 700 || st.spd < 40 || st.view !== 'tps') return;
+  if (TL.fpsDone || st.rem < 450 || st.spd < 30 || st.view !== 'tps') return;
   TL.fpsDone = true;
   TL.fpsUntil = V.game + 7000;
   await ev(() => N.view.set('fps', { noSave: true }));
@@ -1059,7 +1074,7 @@ async function fpsRideCheck(st) {
 async function fpsEnd() { TL.fpsUntil = 0; await ev(() => N.view.set('tps', { noSave: true })); }
 
 /* ============================================================================ the autopilot */
-const NOT_STORY = /downstairs|2-in-1|Sleep|Eat \(|REWIND|^Get off|^Park|Chitti Chase|^Start |race|Challenge|Play with|^Click \(|Borrow|Hire|Nakko|Ride auto|fare\)/i;
+const NOT_STORY = /downstairs|2-in-1|Sleep|Eat \(|REWIND|^Get off|^Park|Chitti Chase|^Start |\brace\b|Challenge|Play with|^Click \(|Borrow|Hire|Nakko|Ride auto|fare\)/i;
 const STORY_OFFER = /^(CLAP|Clap|Set the self|Drag Nanna|Nanna,|Look down|Leave the cake|Send Immu|Get in the boat|Board the bus|Ask about|▶ PLAY|● REC|Climb to the|Go up|Up to|Ride (Hero|Hercules|Scooty|BSA|cycle|Ladies)|Fly the kite|Give|Light the|Talk|Take|Pick|Open|Count the|Ring|Wave|Buy|Empty|Eat|Drink|Hand|Show|Put|Use|Read)/;
 async function play(done, o) {
   o = o || {};
@@ -1145,7 +1160,8 @@ async function play(done, o) {
       else if (s.s1.queue.gap) { await press('ArrowUp', 1, 180); }
       await wait(150); continue;
     }
-    if ((s.s1 && s.s1.ride) || (s.p.hidden && s.p.locked)) { if (CAP.k !== 'ride') { cls('ride'); mark('hl', { what: 'ride', w: 2 }); } await wait(250); continue; }
+    if ((s.s1 && s.s1.ride) || (s.p.hidden && s.p.locked)) { if (CAP.k !== 'ride') { cls('ride'); mark('hl', { what: 'ride', w: 2 }); await ev(() => { window.__R.cam.ride = true; window.__R.cam.rideV = null; }); } await wait(250); continue; }
+    if (CAP.k === 'ride') await ev(() => { window.__R.cam.ride = false; });
     if (s.p.pass) { if (CAP.k !== 'ride') { cls('ride'); mark('hl', { what: 'ride', w: 2 }); } await wait(250); continue; }
     if (s.p.locked) {
       cls('wait');
