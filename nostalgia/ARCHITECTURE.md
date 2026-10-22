@@ -70,6 +70,11 @@ nostalgia/
                     'placesArt' (order 43), wraps setGroundPainter -> N.placesArt {drawProp, queueProp, fx}
   src/entities.js   entity registry, spatial hash, Actor base, people drawing, Player on foot -> N.entities, N.player
   src/vehicles.js   vehicle types, physics, drawing, enter/exit -> N.vehicles
+  src/decker.js     (after vehicles.js) the double-decker's top deck: boarding a `topDeck` bus (decker_bus, kept round
+                    Charminar / Koti / Necklace Road by traffic.js spawnAt / routeBias) makes the player a 'deck'
+                    passenger who walks about the moving bus in its own frame, sways when it brakes, sits in any
+                    free seat or stands, and goes down the stairs to get off; passengers come and go at stops;
+                    system 'decker' (order 31, after vehicles) -> N.decker (tests/decker.cjs)
   src/traffic.js    ambient traffic, pedestrians, cows, dogs, pigeons -> N.traffic
   src/npcs.js       named story NPCs, portraits, talk prompts -> N.npcs
   src/wanted.js     the Chappal Meter (wanted level) + pursuers -> N.wanted

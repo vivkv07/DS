@@ -559,6 +559,8 @@
       else if (c === 'auto') w = { arterial: 1.5, bund: 1.5, bridge: 1.5, street: 2, lane: 0.9 }[e.kind] || 1;
       else w = { arterial: 1, bund: 1.2, bridge: 1, street: 2, lane: 1.5 }[e.kind] || 1;
       if (C === A) w *= 0.02;
+      // a type's own idea of where it goes (TYPES[t].routeBias: the double-deckers stay on their beat)
+      if (v.T.routeBias) w *= v.T.routeBias(v, B, C, e);
       // keep traffic near the player (the rest despawns anyway)
       if (p && Math.hypot(C.x - p.x, C.y - p.y) > viewR() + TUNE.despawnVeh * 0.8) w *= 0.3;
       // straight on is a little more likely than turning
@@ -638,7 +640,7 @@
   /** Bus stops on edge A->B on the left of travel, from distance dMin up to short of B's junction mouth. */
   function addStops(v, A, B, e, g, off, dMin) {
     const tr = v.tr;
-    if (v.type !== 'bus' || tr.pursuit) return;
+    if (!(v.type === 'bus' || v.T.routeBus) || tr.pursuit) return;
     const st = RI.stops.get(e.id);
     if (!st) return;
     const forward = e.a === A.id, dMax = g.L - Math.max(20, Math.min(junctionR(B), g.L * 0.45) + 6);
@@ -937,7 +939,7 @@
     else if (q.f & F_EXIT) { tr.inBox = -1; tr.cleared = -1; }
     if (q.f & F_STOP && !q.dead && tr.stopDone !== q) {
       tr.stopT = q.stop || TUNE.busStop; tr.stopAt = q;
-      if (v.type === 'bus') busArrive(v, q);
+      if (v.type === 'bus' || v.T.routeBus) busArrive(v, q);
     }
   }
   function trySwerve(v, tr, ob, ux, uy) {
@@ -1009,7 +1011,7 @@
     const L = { kind: 'man', skin: skin(), hair: '#1a1412', shirt: pick(SHIRT_PALE), pants: pick(PANTS), cast: 'drv' };
     switch (type) {
       case 'auto': case 'yadagiri_auto': L.shirt = '#a08a5a'; L.pants = '#a08a5a'; if (rnd() < 0.5) L.towel = pick(['#c03030', '#efe6d0']); L.oiled = rnd() < 0.5; break;
-      case 'bus': case 'lorry': L.shirt = type === 'bus' ? '#a08a5a' : pick(SHIRT_LOUD); L.pants = type === 'bus' ? '#a08a5a' : pick(PANTS); break;
+      case 'bus': case 'decker_bus': case 'lorry': L.shirt = type !== 'lorry' ? '#a08a5a' : pick(SHIRT_LOUD); L.pants = type !== 'lorry' ? '#a08a5a' : pick(PANTS); break;
       case 'cycle': return makeLook(pick(night() ? ['man', 'lungi', 'youth'] : ['student', 'man', 'kid', 'lungi', 'youth', 'uncle', 'student']), style).look;
       case 'ladiescycle': { const r = makeLook(rnd() < 0.6 && !night() ? 'student' : 'woman', style).look; if (r.kind === 'student') { r.girl = true; r.plaits = pick(RIBBON); } if (r.kind === 'burqa') r.kind = 'woman'; return r; }
       // the black Hero roadster: grown men only (the saddle is miles up) - the milkman on his dawn round
@@ -1079,10 +1081,18 @@
     const kind = opts.kind;
     if (kind === 'lane') { mix.bus = 0; mix.lorry = 0; mix.ambassador = 0; mix.padmini = (mix.padmini || 0) * 0.3; mix.maruti800 = (mix.maruti800 || 0) * 0.4; }
     if (kind === 'arterial') { mix.rickshaw = (mix.rickshaw || 0) * 0.4; }
+    // types that keep to their own part of town: TYPES[t].spawnAt(x, y, style, kind, minutes) -> weight (the double-
+    // deckers round Charminar, Koti and Necklace Road), and TYPES[t].maxAlive caps how many of a type are about at once
+    for (const t in TY) {
+      const T2 = TY[t];
+      if (typeof T2.spawnAt === 'function') mix[t] = opts.x != null ? +T2.spawnAt(opts.x, opts.y, st, kind, m) || 0 : 0;
+      if (T2.maxAlive && mix[t] > 0 && countType(t) >= T2.maxAlive) mix[t] = 0;
+    }
     if (opts.x != null) for (const ev of activeEvents(opts.x, opts.y)) if (ev.idolLorries) { if (TY.peacock_lorry) mix.peacock_lorry = (mix.peacock_lorry || 0) + 40; else mix.lorry = (mix.lorry || 0) + 40; }
     for (const t in mix) if (!TY[t]) delete mix[t];
     return mix;
   }
+  function countType(t) { let n = 0; for (const v of T.vehicles) if (v.alive && v.type === t) n++; return n; }
   function pickType(style, e, x, y) {
     const t = wpick(typeWeights(style, { kind: e && e.kind, x, y })) || 'auto';
     return N.vehicles.TYPES[t] ? t : 'auto';
@@ -2731,7 +2741,7 @@
     },
     release,
     busAt(x, y, r) {
-      for (const v of T.vehicles) if (v.type === 'bus' && v.tr && v.tr.stopT != null && Math.hypot(v.x - x, v.y - y) < (r || 60)) return v;
+      for (const v of T.vehicles) if ((v.type === 'bus' || v.T.routeBus) && v.tr && v.tr.stopT != null && Math.hypot(v.x - x, v.y - y) < (r || 60)) return v;
       return null;
     },
     spawnVehicle(type, at) {

@@ -227,6 +227,33 @@
     grip: 10, drift: 3, bounce: 0.18, mass: 40, seats: 50, radio: true, camZoom: 0.86, smoke: 'diesel', playerNoEnter: true,
     refuse: REFUSE.bus, sound: 'bus', colors: ['#b22b2b'], routes: ['127K', '8A', '9X', '49M', '5K', '1Z', '65G', '219'], draw: (ctx, v) => drawBus(ctx, v),
   });
+  // APSRTC's double-deckers (Leyland, red with a cream band) still ran the old city, Koti and the Tank Bund side in
+  // 2003, their last years. Traffic keeps them round Charminar, Koti and Necklace Road (spawnAt / routeBias, read by
+  // traffic.js); they stop at bus stops and are boarded like a city bus (routeBus), the player going up to the top deck
+  // (topDeck: decker.js, where he walks about the moving bus, sits in any free seat or stands; the roof lifts away).
+  const DD_BEAT = ['charminar', 'koti', 'necklace_road'], DD_BEAT_R = [750, 1150];
+  function deckerBeat(x, y) {
+    let best = 1e9;
+    for (const id of DD_BEAT) { const q = N.places && N.places[id]; if (q) best = Math.min(best, Math.hypot(q.x - x, q.y - y)); }
+    return best;
+  }
+  define('decker_bus', {
+    name: 'Double-decker', short: 'double-decker', verb: 'Drive', cls: 'heavy', w: 62, d: 18, h: 26,
+    maxSpeed: 100, accel: 36, brake: 140, reverse: 0.25, drag: 30, turn: 1.15, turnLow: 0, turnHigh: 0.65,
+    grip: 10, drift: 3, bounce: 0.18, mass: 48, seats: 70, radio: false, camZoom: 0.8, smoke: 'diesel', playerNoEnter: true,
+    refuse: REFUSE.bus, sound: 'bus', colors: ['#b22b2b'], routes: ['7Z', '8', '2K'], routeBus: true, topDeck: true,
+    maxAlive: 4,
+    spawnAt: (x, y, style, kind, m) => {
+      if (kind === 'lane' || kind === 'path') return 0;
+      const d = deckerBeat(x, y);
+      if (d > DD_BEAT_R[1]) return 0;
+      const w = 14 * (d < DD_BEAT_R[0] ? 1 : (DD_BEAT_R[1] - d) / (DD_BEAT_R[1] - DD_BEAT_R[0]));
+      return m >= 22 * 60 || m < 6 * 60 ? w * 0.15 : w; // the last ones are back at the depot by ten
+    },
+    // at a junction: anywhere on the beat is fine; off it, the way back towards it
+    routeBias: (v, B, C) => { const dC = deckerBeat(C.x, C.y); return dC < DD_BEAT_R[0] ? 1 : dC < deckerBeat(B.x, B.y) ? 0.7 : 0.08; },
+    draw: (ctx, v) => drawDecker(ctx, v),
+  });
   define('lorry', {
     name: 'Lorry', short: 'lorry', verb: 'Drive', cls: 'heavy', w: 46, d: 16, h: 16,
     maxSpeed: 110, accel: 40, brake: 150, reverse: 0.25, drag: 30, turn: 1.2, turnLow: 0, turnHigh: 0.7,
@@ -955,11 +982,12 @@
   /** "Board bus ₹3": a traffic bus (systems §3.6 hop-on). Moving > 15 u/s = footboard (+heat, scolding). */
   function boardBus(p, v) {
     const moving = Math.abs(v.speed) > 15, fare = busFare();
-    if (!ride(p, v, { as: 'passenger', fare, why: 'bus' })) return false;
+    if (!ride(p, v, { as: v.T.topDeck && N.decker ? 'deck' : 'passenger', fare, why: 'bus' })) return false;
     if (moving) {
       if (N.wanted && typeof N.wanted.addHeat === 'function') N.wanted.addHeat(TUNE.footboard, 'footboard');
       toast('The conductor hauls you in by the collar: "*Footboard pe nakko!*"', 2800);
     } else toast(fare ? '"Right, right!" Conductor uncle punches your ticket. Three rupees.' : 'You show Ticket Thatha\'s punch. Conductor uncle salutes: "Free, free!"', 2600);
+    if (v.T.topDeck) setTimeout(() => { if (p.vehicle === v) toast('Up the stairs to the top deck! Walk about, ACTION on a free seat (the front one is free).', 3000); }, moving ? 2900 : 2700);
     N.emit('bus:board', { vehicle: v, footboard: moving, fare });
     return true;
   }
@@ -1860,6 +1888,100 @@
     if (v.route) readableText(ctx, L / 2 - 8, 0, H, v.route, '#1a1214', true);
   }
 
+  // -------------------------------------------------------------- double-decker
+  // the bus, two decks tall: lower windows, the cream band with APSRTC between the decks, the upper windows, the route
+  // board between the front windows. While the player rides upstairs the roof lifts away: the top deck from above.
+  function drawDecker(ctx, v) {
+    const T = v.T, L = T.w, W = T.d, H = T.h;
+    begin(v);
+    const red = v.color, cream = '#efe6cf', roofC = '#d6d0c2';
+    if (!T._wheels) { const wx = L / 2 - 9, wy = W / 2 - 1.6; T._wheels = [[wx, -wy, 1], [wx, wy, 1], [-wx + 4, -wy, 0], [-wx + 4, wy, 0]]; }
+    chassis(ctx, T._wheels, 7, 3.2, v.steerVis, '#2a2628', L, W);
+    const body = rrect(L, W, 2.6, 2.0);
+    if (!busText.dd) busText.dd = N.draw.pixelTextCanvas('APSRTC', '#b22b2b');
+    const P = N.player, aboard = !!(P && P.vehicle === v);
+    prism(ctx, body, 1.8, H, red, aboard ? '#4e4036' : roofC, (c2, i, ax, ay, bx, by, nx, ny) => {
+      const len = Math.hypot(bx - ax, by - ay);
+      const fx = wxOf(1, 0) - fx0, fy = wyOf(1, 0) - fy0;
+      const dot = ((bx - ax) * fx + (by - ay) * fy) / (len || 1);
+      const frontFace = Math.abs(dot) < 0.3 && nx * fx + ny * fy > 0.5;
+      const rearFace = Math.abs(dot) < 0.3 && nx * fx + ny * fy < -0.5;
+      if (len < 4) return;
+      // (the heights of the 3D model, view3d_actors.js mkDecker: lower windows, the band between the decks, upper windows)
+      band(c2, ax, ay, bx, by, 0, 1, 7.2, 8.0, cream, nx, ny);
+      band(c2, ax, ay, bx, by, 0, 1, 13.6, 16.6, cream, nx, ny);
+      band(c2, ax, ay, bx, by, 0, 1, 23.9, 24.4, cream, nx, ny);
+      if (frontFace) {
+        band(c2, ax, ay, bx, by, 0.06, 0.94, 8.2, 13.3, GLASS);
+        band(c2, ax, ay, bx, by, 0.15, 0.85, 14.0, 16.2, '#141214');
+        band(c2, ax, ay, bx, by, 0.05, 0.48, 17.4, 23.6, GLASS); band(c2, ax, ay, bx, by, 0.52, 0.95, 17.4, 23.6, GLASS);
+        band(c2, ax, ay, bx, by, 0.12, 0.3, 3, 4.4, '#fff4d0'); band(c2, ax, ay, bx, by, 0.7, 0.88, 3, 4.4, '#fff4d0');
+      } else if (rearFace) {
+        band(c2, ax, ay, bx, by, 0.1, 0.9, 18.0, 23.2, GLASS);
+        band(c2, ax, ay, bx, by, 0.12, 0.88, 9.0, 13.0, GLASS);
+        band(c2, ax, ay, bx, by, 0.1, 0.24, 3.2, 4.6, '#c0281e'); band(c2, ax, ay, bx, by, 0.76, 0.9, 3.2, 4.6, '#c0281e');
+      } else if (len > 20) {
+        const n = 9, t0 = 0.04, t1 = 0.96, step = (t1 - t0) / n;
+        for (let k = 0; k < n; k++) {
+          band(c2, ax, ay, bx, by, t0 + k * step + 0.012, t0 + (k + 1) * step - 0.012, 8.3, 13.2, k % 2 ? GLASS : '#283846');
+          band(c2, ax, ay, bx, by, t0 + k * step + 0.012, t0 + (k + 1) * step - 0.012, 17.4, 23.5, k % 2 ? '#283846' : GLASS);
+        }
+        // the open rear platform on the kerb (left) side
+        const left = nx * fy - ny * fx > 0.5;
+        if (left) { const fwd = dot > 0, d1 = fwd ? 0.0 : 0.88; band(c2, ax, ay, bx, by, d1, d1 + 0.12, 2, 13.2, '#1c1a1e'); }
+        wallText(c2, ax, ay, bx, by, 0.3, 0.7, 14.0, 16.2, busText.dd);
+      }
+    }, aboard ? (g) => deckFromAbove(g, v, L, W) : (g) => {
+      g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(-L / 2 + 3, -W / 2 + 2.4, L - 7, W - 4.8);
+      g.fillStyle = '#bdb6a6'; g.fillRect(-L / 2 + 12, -2.8, 7, 5.6); g.fillRect(6, -2.8, 7, 5.6);
+      g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(-L / 2 + 2, -W / 2 + 0.8, L - 4, 1.2);
+      g.fillStyle = red; g.fillRect(L / 2 - 2.6, -W / 2 + 0.6, 1.8, W - 1.2); g.fillRect(-L / 2 + 0.8, -W / 2 + 0.6, 1.6, W - 1.2);
+    });
+    if (!aboard) {
+      readableText(ctx, -6, 0, H, 'DOUBLE DECKER', '#b22b2b', true);
+      if (v.route) readableText(ctx, L / 2 - 8, 0, H, v.route, '#1a1214', true);
+    }
+  }
+  // the top deck from above (local coords at roof height, facing +x; -y is the left / kerb side; decker.js's layout):
+  // seat pairs either side of the aisle, the stairwell at the back, the front rail; the passengers in their seats
+  // (N.decker.looks), the player wherever he is on the deck: walking about, standing, or in the seat he took
+  const DD_ANIM = { phase: 0, speed: 0, run: false };
+  function deckFromAbove(g, v, L, W) {
+    const DK = N.decker;
+    if (!DK) return;
+    const LY = DK.LAYOUT, S = LY.stairs;
+    g.fillStyle = '#4a3a30'; g.fillRect(-L / 2 + 1.6, -W / 2 + 0.9, L - 3.2, W - 1.8); // the floor
+    g.fillStyle = '#5c4c40'; g.fillRect(-L / 2 + 3, -LY.aisle + 0.6, L - 8, (LY.aisle - 0.6) * 2); // the aisle runner
+    g.fillStyle = '#1a1410'; g.fillRect(S.x0, S.z0 + 0.6, S.x1 - S.x0, S.z1 - S.z0 - 0.6); // the stairwell
+    g.strokeStyle = '#6a5a4c'; g.lineWidth = 0.4; for (let x = S.x0 + 0.8; x < S.x1; x += 1.4) { g.beginPath(); g.moveTo(x, S.z0 + 0.8); g.lineTo(x, S.z1 - 0.2); g.stroke(); }
+    g.fillStyle = '#c9c9c4'; g.fillRect(LY.front + 0.6, -W / 2 + 1.2, 0.6, W - 2.4); // the front rail
+    for (const x of LY.rows) for (const side of [-1, 1]) {
+      const y0 = side * LY.aisle, y1 = side * (W / 2 - 1.0);
+      g.fillStyle = '#2f5e72'; g.fillRect(x - 1.8, Math.min(y0, y1), 3.4, Math.abs(y1 - y0));
+      g.fillStyle = '#21434f'; g.fillRect(x - 2.4, Math.min(y0, y1), 0.7, Math.abs(y1 - y0)); // the back rest
+    }
+    const P = N.player, looks = DK.looks(v), st = DK.onDeck(P) && DK.state.v === v ? DK.state : null;
+    for (const s of DK.SEATS) {
+      const look = looks[s.i];
+      if (!look) continue;
+      g.save(); g.translate(s.x - 0.2, s.z); g.scale(0.62, 0.62);
+      try { N.people.draw(g, look, DD_ANIM); } catch (e) { /* a look the painter does not know */ }
+      g.restore();
+    }
+    for (const w of DK.walkers(v)) {
+      const an = w.anim || (w.anim = { phase: 0, speed: 0, run: false });
+      an.phase = w.ph || 0; an.speed = w.sp > 0 ? 0.7 : 0;
+      g.save(); g.translate(w.x, w.z); g.rotate(w.a); g.scale(0.62, 0.62);
+      try { N.people.draw(g, w.look, an); } catch (e) { /* ignore */ }
+      g.restore();
+    }
+    if (st) {
+      g.save(); g.translate(st.x - (st.sit >= 0 ? 0.2 : 0), st.z); g.rotate(st.a); g.scale(0.62, 0.62);
+      try { N.people.draw(g, P.look, P.anim || DD_ANIM); } catch (e) { /* ignore */ }
+      g.restore();
+    }
+  }
+
   // -------------------------------------------------------------- lorry
   const LORRY_TXT = {};
   function drawLorry(ctx, v) {
@@ -2536,7 +2658,8 @@
       if (fb) { pickSpec.label = 'Pick up ' + fb.v.T.short; pickSpec.dist = fb.d; pickSpec.target = fb.v; N.interact.offer(pickSpec); }
     } else if (pv && p.passenger) {
       // riding along: "Get off" (asks the driver to stop first when moving); none while a story locks the seat
-      if (!p.controlsLocked && !pv.lockPassenger) {
+      // (up on a double-decker's top deck, decker.js offers the seats and the stairs instead)
+      if (!p.controlsLocked && !pv.lockPassenger && p.passenger !== 'deck') {
         exitSpec.label = Math.abs(pv.speed) > 20 && !pv.stopReq ? 'Ask to stop' : 'Get off';
         exitSpec.use = useExit; exitSpec.quiet = false;
         N.interact.offer(exitSpec);

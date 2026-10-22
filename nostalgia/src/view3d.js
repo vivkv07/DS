@@ -2512,9 +2512,11 @@
       view.pitch = U.clamp(view.pitch, -1.15, 1.25);
       let yaw = view.yaw, eyeX = ex, eyeY = ey, eyeH = el + 6.3;
       if (veh) {
-        // cockpit: the look offset springs back to the vehicle heading
+        // cockpit: the look offset springs back to the vehicle heading; on a double-decker's top deck (decker.js) he
+        // walks about and looks where he likes (the view turns with the bus)
+        const deck = N.decker && N.decker.onDeck(p) ? N.decker.eye() : null;
         CAM.fpsOff = wrapA(CAM.fpsOff + dx + sx * 2.5 * dt);
-        if (since > 1.2) CAM.fpsOff *= Math.exp(-dt * 2.5);
+        if (since > 1.2 && !deck) CAM.fpsOff *= Math.exp(-dt * 2.5);
         yaw = (veh.angle || 0) + CAM.fpsOff;
         view.yaw = yaw;
         const c = Math.cos(veh.angle || 0), s = Math.sin(veh.angle || 0);
@@ -2523,6 +2525,12 @@
         const side = cls === 'car' ? T.d * 0.18 : 0; // right-hand drive
         eyeX = ex + c * fwd - s * side; eyeY = ey + s * fwd + c * side;
         eyeH = el + (cls === 'heavy' ? 15 : cls === 'auto' ? 9 : cls === 'bike' ? 8.6 : cls === 'boat' ? 6.5 : 8.2);
+        if (deck) {
+          eyeX = deck.x; eyeY = deck.y; eyeH = el + deck.h;
+          // a little bob walking the aisle
+          const ws = N.decker.speed();
+          if (!reducedMotion() && ws > 4) { CAM.bobPh += dt * 9; eyeH += Math.sin(CAM.bobPh) * Math.min(0.22, ws * 0.006); }
+        }
         if (cls === 'bike' && !reducedMotion()) eyeH += Math.sin(tnow * 9) * Math.min(0.15, spd * 0.001);
       } else {
         CAM.fpsOff = 0;
@@ -2536,18 +2544,20 @@
       cam.lookAt(CAM.look);
       CAM.distCur = 0;
       setFov(veh ? fov + 6 + Math.min(10, spd * 0.05) : fov + 4, dt);
-      cockpit(veh);
+      cockpit(veh && !(N.decker && N.decker.onDeck(p)) ? veh : null); // (the top deck has no dashboard)
       return;
     }
     cockpit(null);
     // third person: orbit / chase
     view.pitch = U.clamp(view.pitch, -0.12, 1.15);
     const cls = T ? T.cls || 'car' : null;
+    const deck = !!(veh && N.decker && N.decker.onDeck(p)); // up on a double-decker's top deck: the camera follows him
     let dist = 30, th = 7.5;
     if (veh) {
-      dist = cls === 'bike' ? 34 : cls === 'auto' ? 40 : cls === 'heavy' ? 72 : cls === 'boat' ? 48 : 44;
-      th = cls === 'heavy' ? 18 : cls === 'bike' ? 8 : 10;
-      dist += Math.min(16, spd * 0.06);
+      dist = deck ? 50 : cls === 'bike' ? 34 : cls === 'auto' ? 40 : cls === 'heavy' ? 72 : cls === 'boat' ? 48 : 44;
+      th = deck ? N.decker.LAYOUT.floor + 5 : cls === 'heavy' ? 18 : cls === 'bike' ? 8 : 10;
+      dist += Math.min(deck ? 8 : 16, spd * 0.06);
+      if (deck) view.pitch = Math.max(view.pitch, 0.32); // above the walls, looking down into the deck
       // chase: swing behind the heading (unless the player is looking around)
       if (since > 1.0 && Math.abs(veh.speed || spd) > 6) {
         const k = 1 - Math.exp(-dt * 2.6 * U.clamp(spd / 60, 0.25, 1.2));
@@ -2563,9 +2573,9 @@
         view.yaw = approachAngle(view.yaw, face, k);
       }
     }
-    const look = veh ? Math.min(26, spd * 0.2) : 0;
+    const look = veh && !deck ? Math.min(26, spd * 0.2) : 0;
     const fw = veh ? veh.angle || 0 : view.yaw;
-    const tx = ex + Math.cos(fw) * look, ty = ey + Math.sin(fw) * look, tz = el + th;
+    const tx = (deck ? p.x : ex) + Math.cos(fw) * look, ty = (deck ? p.y : ey) + Math.sin(fw) * look, tz = el + th;
     const kT = CAM.snap ? 1 : 1 - Math.exp(-dt * 14);
     CAM.tgt.x += (tx - CAM.tgt.x) * kT; CAM.tgt.y += (tz - CAM.tgt.y) * kT; CAM.tgt.z += (ty - CAM.tgt.z) * kT;
     const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
