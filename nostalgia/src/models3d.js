@@ -62,6 +62,7 @@
   const LAZY_DIRS = ['lazy3d/', 'dist/lazy3d/', '../dist/lazy3d/'];
   const LAZY_MAX = 2;        // concurrent lazy GLB fetches
   const LAZY_KEEP = 12;      // parsed lazy models kept while no landmark shows them (LRU)
+  const LAZY_GRACE = 5000;   // ms: a lazy model parsed or used this recently is never freed
   const S = {
     state: 'idle', error: null, started: false, loadT: 0, loadMs: 0, parseMs: 0,
     loaderFrom: null, packFrom: null, models: new Map(), pending: new Map(), failed: new Map(),
@@ -299,13 +300,19 @@
   function ref(id, d) { const n = (LZ.refs.get(id) || 0) + d; if (n > 0) LZ.refs.set(id, n); else LZ.refs.delete(id); if (d > 0) touch(id); }
   /** free the least recently used parsed lazy models that nothing shows, beyond LAZY_KEEP */
   function evictLazy() {
-    let n = LZ.lru.size;
+    // (only landmarks count: the lazy characters / vehicles are never freed (actors may hold instances we do not
+    // count), and counting them pushed every landmark just parsed, nothing showing it yet, straight out again: a
+    // fetch / parse / free loop)
+    const lms = [];
+    for (const id of LZ.lru.keys()) { const md = S.models.get(id); if (md && isLmFamily(md.man)) lms.push(id); }
+    let n = lms.length;
     if (n <= LAZY_KEEP) return;
-    for (const id of Array.from(LZ.lru.keys())) {
+    const t = now();
+    for (const id of lms) {
       if (n <= LAZY_KEEP) break;
-      if (LZ.refs.get(id) || !S.models.has(id)) continue;
+      // shown, or parsed / used a moment ago (its landmark is about to show it): kept
+      if (LZ.refs.get(id) || t - (LZ.lru.get(id) || 0) < LAZY_GRACE) continue;
       const md = S.models.get(id);
-      if (!isLmFamily(md.man)) continue;   // actors may hold instances we do not count
       S.models.delete(id); LZ.lru.delete(id); LZ.evicted++; n--;
       freeModel(md);
     }

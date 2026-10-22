@@ -227,7 +227,11 @@ async function main(browser) {
       const ids = N.models3d.people.models();
       const row = [];
       for (const id of ids) {
-        const man = N.ASSETS3D.manifest[id], V = (man.meta && man.meta.variants) || {};
+        // (a lazy character (dist/lazy3d, not in the core pack) is lined up only once it is loaded: from file:// its GLB
+        // is out of reach and it stays procedural; tests/lazy3d.cjs ONLY=site lines them up on the website build)
+        const man = N.ASSETS3D.manifest[id] || (N.models3d.loaded && N.models3d.loaded(id) && N.ASSETS3D_INDEX && N.ASSETS3D_INDEX.manifest[id]);
+        if (!man) continue;
+        const V = (man.meta && man.meta.variants) || {};
         const looks = Object.entries(V).slice(0, id === 'kid_chinnu' ? 3 : 2);
         if (!looks.length) looks.push(['default', man.meta.look]);
         for (const [n, look] of looks) row.push({ id, n, look });
