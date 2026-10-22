@@ -100,6 +100,15 @@ nostalgia/
                     that carries `build3d(THREE, s, H, gb, job)` and leaves the others alone). Boards use the
                     core sign atlas, batched per chunk and page. Fictional institutes, 2003 courses only
                     -> N.ameerpet (tests/ameerpet.cjs)
+  src/hoardings.js  (after ameerpet.js) advertisement hoardings in the busy centres, 2003: on 'world:built'
+                    roadside billboards on lattice legs (open ground by a road, facing it, some double-sided)
+                    and rooftop boards on road-facing flat roofs round 28 junctions (CENTRES; the coaching
+                    belt's buildings left alone). Fictional colas, soaps, washing powder, tea, biscuits,
+                    bikes, prepaid mobiles, fans, cement, the game's own TV / radio, and film boards from
+                    places_art's painter (N.placesArt.filmBoard / FILMS). One procedural poster atlas
+                    (canvas, 2D cells; one shared 3D texture, one mesh per chunk); system 'hoardings'
+                    (order 43.6: 2D shadows + night floodlights), 3D layer 'hoardings3d' (floodlit at night)
+                    -> N.hoardings (tests/hoardings.cjs)
   src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
                     every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
@@ -1495,7 +1504,8 @@ N.view3d.registerStructure(t, build(THREE, s, H, gb, job) -> Object3D | void)
     chunk-local coordinates goes in an object placed at (job.ox, 0, job.oz).) 'custom' is
     registered by src/ameerpet.js as a dispatcher: a custom structure that carries
     `build3d(THREE, s, H, gb, job)` is built by it, every other one draws nothing in 3D (as
-    before). Give your custom structures a build3d rather than registering 'custom' again.
+    before). Give your custom structures a build3d rather than registering 'custom' again
+    (src/hoardings.js does; it registers the same dispatcher only when ameerpet.js is absent).
 N.view3d.registerLayer(id, {init(THREE, H), update(dt, H), dispose(H), order})
     Per-frame 3D overlays in world space (mission markers from N.missions.markers(), collectible
     glints, season overlays, kites, birds). Add objects to H.layer (a Group in the scene).
