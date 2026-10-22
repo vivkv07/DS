@@ -72778,6 +72778,7 @@ P.finished = true;
 const rows = P.slots.map((s) => pmStats(S, s));
 P.final = rows;
 const mine = rows.find((r) => r.uid === P.L.me);
+try { const R = S.result; if (R && ctx.summary) ctx.summary({ line: R.tie ? 'Match tied: ' + R.margin : (R.winner && R.winner.name ? R.winner.name + ' won ' + R.margin : '') }); } catch (e) { N.err('cricket.party.summary', e); }
 try { if (mine && !P.L.isGone(P.L.me)) ctx.report(mine.res); } catch (e) { N.err('cricket.party.report', e); }
 try { if (ctx.ai && ctx.ai.report && (ctx.mode !== 'party' || ctx.isHost)) for (const r of rows) if (/^ai:/.test(r.uid)) ctx.ai.report(r.uid, r.res); } catch (e) { N.err('cricket.party.aiReport', e); }
 P.closeAt = S.clock + 4.2;
@@ -110531,7 +110532,7 @@ if (prevKeys.size && !back) toast(p.nick + ' joined the room!', 2400);
 }
 for (const [k, g] of GH) {
 if (keys.has(k)) continue;
-if ((R.byeT.get(k) || 0) > now - 10000) { R.gone.delete(k); const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); }
+if ((R.byeT.get(k) || 0) > now - 10000) { R.gone.delete(k); const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); N.emit('online:bye', { key: k }); }
 else if (!R.gone.has(k)) { R.gone.set(k, { t: now, nick: g.nick, j: g.j || 0 }); g.drop = now; }
 }
 const clearT = Math.max(0, ...list.map((p) => p.pc || 0));
@@ -110645,7 +110646,8 @@ g.corr = Math.hypot(cx, cy) < 60 ? { x: cx, y: cy } : null;
 function onBye(raw) {
 if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey || raw.k.length > 20) return;
 R.byeT.set(raw.k, Date.now());
-N.emit('online:bye', { key: raw.k });
+const o = R.gone.get(raw.k);
+if (o) { R.gone.delete(raw.k); if (GH.has(raw.k)) { removeGhost(raw.k); toast(o.nick + ' left the room.', 2000); } N.emit('online:bye', { key: raw.k }); N.emit('online:players', { n: R.players.length }); renderPanel(); renderHud(); }
 }
 function onEmote(raw) {
 if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey) return;
@@ -110799,17 +110801,21 @@ document.querySelectorAll('#touch .t-btn').forEach(add);
 } catch (e) { N.err('online.readLayout', e); }
 LAY.keep = out;
 }
-function clearOfHud(X, Y, bw, bh, vertical, lo, hi) {
+function clearOfHud(X, Y, bw, bh, vertical, lo, hi, mid) {
 const K = LAY.keep;
 if (!K.length) return [X, Y];
 const hit = (x, y) => K.some((r) => x + bw > r[0] && x - bw < r[2] && y + bh > r[1] && y - bh < r[3]);
 if (!hit(X, Y)) return [X, Y];
-for (let d = 8; d <= 480; d += 8) {
-for (const s of [d, -d]) {
-const v = (vertical ? Y : X) + s;
+const sgn = vertical ? (X > mid ? -1 : 1) : (Y > mid ? -1 : 1);
+for (let inward = 0; inward <= 320; inward += 16) {
+const x0 = vertical ? X + sgn * inward : X, y0 = vertical ? Y : Y + sgn * inward;
+for (let d = 0; d <= 480; d += 8) {
+for (const s of d ? [d, -d] : [0]) {
+const v = (vertical ? y0 : x0) + s;
 if (v < lo || v > hi) continue;
-const x = vertical ? X : v, y = vertical ? v : Y;
+const x = vertical ? x0 : v, y = vertical ? v : y0;
 if (!hit(x, y)) return [x, y];
+}
 }
 }
 return [X, Y];
@@ -110867,7 +110873,7 @@ const y0 = rect.top + Math.max(M, bh) + topBand, y1 = rect.bottom - Math.max(M, 
 const ecx = (x0 + x1) / 2, ecy = (y0 + y1) / 2;
 const tx = (x1 - x0) / 2 / Math.max(1e-6, Math.abs(dx)), ty = (y1 - y0) / 2 / Math.max(1e-6, Math.abs(dy));
 const t = Math.min(tx, ty);
-const [X, Y] = clearOfHud(ecx + dx * t, ecy + dy * t, bw - 6, bh - 6, tx <= ty, tx <= ty ? y0 : x0, tx <= ty ? y1 : x1);
+const [X, Y] = clearOfHud(ecx + dx * t, ecy + dy * t, bw - 6, bh - 6, tx <= ty, tx <= ty ? y0 : x0, tx <= ty ? y1 : x1, tx <= ty ? ecx : ecy);
 const meters = Math.hypot(e.x - P0.x, e.y - P0.y) * 1.6;
 const dEl = el.querySelector('.ol-dist');
 const dTxt = meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters / 10) * 10 + ' m';
@@ -113059,7 +113065,7 @@ const fmt = (ms) => N.party.fmtMs(ms);
 const ord = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 const COLORS = ['#5fd0ff', '#ff5fb0', '#f2c230', '#6fff6a', '#ff8a3a', '#b58aff', '#ff5a4a', '#3ae0c0', '#e8e4d8', '#9ad04a'];
 const ROUTES = [
-{ id: 'tank_bund', name: 'Tank Bund sprint', from: 'Ambedkar statue', to: 'Sailing Club', where: 'tank_bund', pts: [[8917, 4126], [9892, 2837]], every: 420, min: 8000 },
+{ id: 'tank_bund', name: 'Tank Bund sprint', from: 'Ambedkar statue', to: 'Sailing Club', where: 'tank_bund', pts: [[8917, 4126], [9892, 2837]], every: 420, min: 11000 },
 { id: 'koti_charminar', name: 'Koti to Charminar', from: 'Koti', to: 'Charminar', where: 'koti', pts: [[9825, 6145], [9020, 8340]], every: 450, min: 16000 },
 { id: 'necklace_loop', name: 'Necklace Road loop', from: 'Necklace Road', to: 'back round the lake', where: 'necklace_road', pts: [[8082, 3676], [9884, 2754], [8917, 4126], [8082, 3676]], every: 520, min: 30000 },
 { id: 'rtc_narayanguda', name: 'RTC X Roads to Narayanguda', from: 'RTC X Roads', to: 'Narayanguda', where: 'rtc_x_roads', pts: [[10860, 4438], [10380, 5363]], every: 380, min: 7000 },
