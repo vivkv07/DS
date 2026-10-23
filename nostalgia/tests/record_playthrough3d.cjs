@@ -394,10 +394,16 @@ function pageHelper() {
     const dist = Math.max(16, Math.min(32, R.camDist() || 30));
     const blocked = (yaw) => { const a = yaw + Math.PI, c = Math.cos(a), s = Math.sin(a); for (let d = 3; d <= dist + 3; d += 2) if (R.inVehicle(p.x + c * d, p.y + s * d, vs, 2)) return true; return false; };
     const cur = C.on && C.yaw != null ? C.yaw : N.view.yaw;
-    if (!blocked(cur) && !R.camInVehicle()) return;
+    const inside = R.camInVehicle();
+    if (!blocked(cur) && !inside) return;
     for (let k = 1; k <= 12; k++) for (const sg of [1, -1]) {
       const y = cur + sg * k * Math.PI / 12;
-      if (!blocked(y)) { C.on = true; C.yaw = wrapA(y); C.vg = (C.vg || 0) + 1; return; }
+      if (!blocked(y)) {
+        C.on = true; C.yaw = wrapA(y); C.vg = (C.vg || 0) + 1;
+        // the camera already inside the bus: cut to the clear angle at once (an eased turn would show its inside walls)
+        if (inside) { N.view.yaw = C.yaw; if (N.view3d.snapCamera) N.view3d.snapCamera(); }
+        return;
+      }
     }
   };
   VC.hooks.push(R.vehGuard);
