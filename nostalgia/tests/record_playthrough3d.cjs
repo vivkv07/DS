@@ -1074,7 +1074,7 @@ async function fpsRideCheck(st) {
 async function fpsEnd() { TL.fpsUntil = 0; await ev(() => N.view.set('tps', { noSave: true })); }
 
 /* ============================================================================ the autopilot */
-const NOT_STORY = /downstairs|2-in-1|Sleep|Eat \(|REWIND|^Get off|^Park|Chitti Chase|^Start |\brace\b|Challenge|Play with|^Click \(|Borrow|Hire|Nakko|Ride auto|fare\)/i;
+const NOT_STORY = /downstairs|2-in-1|Sleep|Eat \(|REWIND|^Get off|^Park|Chitti Chase|^Start |\brace\b|Challenge|Play with|^Click \(|Borrow|Hire|Nakko|Ride auto|fare\)|Sit pillion|Ride as passenger|Ask for a lift/i;
 const STORY_OFFER = /^(CLAP|Clap|Set the self|Drag Nanna|Nanna,|Look down|Leave the cake|Send Immu|Get in the boat|Board the bus|Ask about|▶ PLAY|● REC|Climb to the|Go up|Up to|Ride (Hero|Hercules|Scooty|BSA|cycle|Ladies)|Fly the kite|Give|Light the|Talk|Take|Pick|Open|Count the|Ring|Wave|Buy|Empty|Eat|Drink|Hand|Show|Put|Use|Read)/;
 async function play(done, o) {
   o = o || {};
@@ -1089,7 +1089,8 @@ async function play(done, o) {
     const key = [s.mode, s.mission, s.scene, s.obj, s.act, s.p.x >> 3, s.p.y >> 3, s.dlg && s.dlg.t, s.cut, s.mg].join('|');
     if (key !== lastKey) { lastKey = key; idleT = vnow(); if (VERBOSE) log('   · ' + [s.mode, s.mission || s.scene, s.obj, 'act=' + s.act, JSON.stringify(s.p), s.tgt ? 'tgt ' + Math.round(s.tgt.x) + ',' + Math.round(s.tgt.y) + ' ' + s.tgt.src : '', s.date, s.view].join(' | ')); }
     if (Date.now() - lastHb > 60000) { lastHb = Date.now(); log('   … ' + [s.mode, s.mission || s.scene, s.obj, 'act=' + s.act, JSON.stringify(s.p), s.tgt ? JSON.stringify(s.tgt) : '-', s.date, s.view, 'out ' + outT().toFixed(0) + ' s'].join(' | ')); }
-    if (s.view === 'top' && s.mode === 'play' && !s.cut) { await ev(() => N.view.set('tps', { noSave: true })); }
+    // (the game itself goes top-down for two story-camera beats drawn with 2D props, story2.js topDownFor(): M12's
+    // gallery pan and an ending beat; it comes back to the 3D view by itself)
     // ---- modal things first
     if (s.ask) {
       cls('read');
@@ -1162,7 +1163,16 @@ async function play(done, o) {
     }
     if ((s.s1 && s.s1.ride) || (s.p.hidden && s.p.locked)) { if (CAP.k !== 'ride') { cls('ride'); mark('hl', { what: 'ride', w: 2 }); await ev(() => { window.__R.cam.ride = true; window.__R.cam.rideV = null; }); } await wait(250); continue; }
     if (CAP.k === 'ride') await ev(() => { window.__R.cam.ride = false; });
-    if (s.p.pass) { if (CAP.k !== 'ride') { cls('ride'); mark('hl', { what: 'ride', w: 2 }); } await wait(250); continue; }
+    if (s.p.pass) {
+      // a free seat behind someone (not a story ride: those lock the seat): ask to stop and get off
+      if (/^(Ask to stop|Get off)$/.test(s.act)) {
+        o._passT = o._passT || vnow();
+        if (vnow() - o._passT > 4000) { log('   (a passenger by mistake: ' + s.act + ')'); cls('act'); await press('KeyE'); await wait(600); o._passT = vnow() - 2500; continue; }
+      } else o._passT = 0;
+      if (CAP.k !== 'ride') { cls('ride'); mark('hl', { what: 'ride', w: 2 }); }
+      await wait(250); continue;
+    }
+    o._passT = 0;
     if (s.p.locked) {
       cls('wait');
       o._lockT = o._lockT || vnow();
