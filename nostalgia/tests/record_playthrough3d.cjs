@@ -340,6 +340,9 @@ function pageHelper() {
   R.freeFn = function (p) {
     const V3 = N.view3d, W = N.world, top = (V3.elevation ? V3.elevation(p) : 0) + 12, SOLID = N.SURF ? N.SURF.SOLID : -1;
     const ground = !p.level;
+    // buses / autos standing or crawling near (not the one he rides): the game's camera collision ignores vehicles, so a
+    // camera put behind one would sit inside it
+    const vs = ground ? R.bigVehicles(p, 90) : [];
     return (a, max) => {
       const c = Math.cos(a), s = Math.sin(a);
       let d = 0;
@@ -347,10 +350,57 @@ function pageHelper() {
         const x = p.x + c * d, y = p.y + s * d;
         if (V3.heightAt(x, y) > top) break;
         if (d > 4 && ground && W && W.surfaceAt && (W.surfaceAt(x, y) === SOLID || (W.isWalkable && !W.isWalkable(x, y) && !(W.isWater && W.isWater(x, y))))) break;
+        if (d > 4 && R.inVehicle(x, y, vs, 3)) break;
       }
       return d;
     };
   };
+  /** cars, autos, buses, lorries near p as oriented boxes {x, y, c, s, hl, hw} (not his own, not one he sits in) */
+  R.bigVehicles = function (p, rad) {
+    const out = [];
+    for (const e of N.entities.query(p.x, p.y, rad + 35)) {
+      const T = e.T;
+      if (e.kind !== 'vehicle' || e.alive === false || e === p.vehicle || e.passenger === p || !T || T.cls === 'bike' || T.cls === 'boat' || (T.h || 0) < 9) continue;
+      if (p.hidden && Math.hypot(e.x - p.x, e.y - p.y) < 14) continue;
+      out.push({ x: e.x, y: e.y, c: Math.cos(e.angle || 0), s: Math.sin(e.angle || 0), hl: (T.w || 20) / 2, hw: (T.d || 10) / 2 });
+    }
+    return out;
+  };
+  /** is the point (x, y) inside one of the boxes (grown by m)? */
+  R.inVehicle = function (x, y, vs, m) {
+    for (const v of vs) {
+      const dx = x - v.x, dy = y - v.y, lx = dx * v.c + dy * v.s, ly = -dx * v.s + dy * v.c;
+      if (Math.abs(lx) < v.hl + m && Math.abs(ly) < v.hw + m) return true;
+    }
+    return false;
+  };
+  /** is the camera inside a vehicle (the game's camera collision does not see them)? */
+  R.camInVehicle = function () {
+    const E = N.view3d && N.view3d.engine, p = N.player;
+    if (!E || !E.camera || !p) return false;
+    const c = E.camera.position;
+    return R.inVehicle(c.x, c.z, R.bigVehicles(p, 60), 1);
+  };
+  /** in a dialogue standing still: when a bus / auto stands between Chinnu and the camera (the camera inside it), turn the
+   *  camera (eased, by the smallest angle) to the nearest yaw with a clear line back from him */
+  R.vehGuard = function (ms) {
+    const C = R.cam, p = N.player;
+    if (!N.view || N.view.mode !== 'tps' || !p || p.hidden || p.vehicle || C.ride || N.state.mode !== 'dialogue') return;
+    C._vgT = (C._vgT || 0) + ms;
+    if (C._vgT < 200) return;
+    C._vgT = 0;
+    const vs = R.bigVehicles(p, 60);
+    if (!vs.length) return;
+    const dist = Math.max(16, Math.min(32, R.camDist() || 30));
+    const blocked = (yaw) => { const a = yaw + Math.PI, c = Math.cos(a), s = Math.sin(a); for (let d = 3; d <= dist + 3; d += 2) if (R.inVehicle(p.x + c * d, p.y + s * d, vs, 2)) return true; return false; };
+    const cur = C.on && C.yaw != null ? C.yaw : N.view.yaw;
+    if (!blocked(cur) && !R.camInVehicle()) return;
+    for (let k = 1; k <= 12; k++) for (const sg of [1, -1]) {
+      const y = cur + sg * k * Math.PI / 12;
+      if (!blocked(y)) { C.on = true; C.yaw = wrapA(y); C.vg = (C.vg || 0) + 1; return; }
+    }
+  };
+  VC.hooks.push(R.vehGuard);
   /** the camera's real distance from the player's head now (after the game's collision pull-in) */
   R.camDist = function () { const E = N.view3d.engine, p = N.player; if (!E || !E.camera || !p) return 0; const c = E.camera.position; const h = N.view3d.elevation ? N.view3d.elevation(p.vehicle ? p : p) : 0; return Math.hypot(c.x - p.x, c.z - p.y, c.y - (h + 7.5)); };
   /** a dialogue with someone standing near: the camera over Chinnu's shoulder looking at the speaker, on the side with
@@ -793,6 +843,10 @@ async function openSession(sess, saveRaw) {
   const args = GL === 'swiftshader'
     ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
     : ['--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist', '--no-sandbox', '--window-size=1400,900', '--window-position=0,0'];
+  // REC_CPU2D=1: 2D canvases raster on the CPU (on llvmpipe an accelerated 2D canvas cost ~2 s per frame in the game's own
+  // top-down beats) - but then full-screen 2D minigame canvases can come out of the screenshots as a stack of repeated
+  // tiles, so it is only for sessions without 2D minigames (s15)
+  if (GL !== 'swiftshader' && process.env.REC_CPU2D) args.push('--disable-accelerated-2d-canvas');
   args.push('--autoplay-policy=no-user-gesture-required', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows');
   const env = Object.assign({}, process.env, { DBUS_SESSION_BUS_ADDRESS: 'disabled:' });
   if (XVFB) env.DISPLAY = XVFB.display;
@@ -908,9 +962,9 @@ async function startCam(label) {
     const yaw = y0 + i * Math.PI / 4;
     await ev((yaw) => { N.view.yaw = yaw; if (N.view3d.snapCamera) N.view3d.snapCamera(); }, yaw);
     await stepFrame(FRAME);
-    const r = await ev(() => { const R = window.__R, f = R.freeFn(N.player); return { d: R.camDist(), ahead: f(N.view.yaw, 120) }; });
-    res.push({ yaw, d: r.d, ahead: r.ahead, sc: Math.min(r.d, 30) * 4 + Math.min(r.ahead, 120) * 0.5 - i % 4 });
-    if (i === 0 && r.d > 26 && r.ahead > 60) break; // the current one is fine
+    const r = await ev(() => { const R = window.__R, f = R.freeFn(N.player); return { d: R.camDist(), ahead: f(N.view.yaw, 120), inV: R.camInVehicle() }; });
+    res.push({ yaw, d: r.d, ahead: r.ahead, inV: r.inV, sc: Math.min(r.d, 30) * 4 + Math.min(r.ahead, 120) * 0.5 - i % 4 - (r.inV ? 200 : 0) });
+    if (i === 0 && r.d > 26 && r.ahead > 60 && !r.inV) break; // the current one is fine
   }
   res.sort((a, b) => b.sc - a.sc);
   await ev((yaw) => { N.view.yaw = yaw; if (N.view3d.snapCamera) N.view3d.snapCamera(); }, res[0].yaw);
@@ -1740,10 +1794,16 @@ function editChapter(chId) {
   fs.rmSync(wd, { recursive: true, force: true }); fs.mkdirSync(wd, { recursive: true });
   // the cuts (a ▶▶ card covers each jump in the picture: a stuck stretch not captured, a debug hop)
   const cuts = tl.marks.filter((m) => m.type === 'cut' && m.f > f0 + 3 && m.f < f1 - 3).map((m) => m.f);
-  const bounds = [f0].concat(cuts.filter((f, i, a) => i === 0 || f - a[i - 1] > 10)).concat([f1]);
+  // stretches cut by hand after QA (REC_OUT/edit_cuts.json {chapter: [[f0, f1, why], ...]}, session frames): a ▶▶ card
+  const hand = ((readJSON(path.join(VIDEO, 'edit_cuts.json'), {}) || {})[chId] || []).filter((r) => r[1] > f0 && r[0] < f1);
+  const handIn = (a, b) => hand.some((r) => a >= r[0] && b <= r[1]);
+  const isCut = new Set(cuts);
+  for (const r of hand) { isCut.add(Math.min(f1, r[1])); }
+  const bounds = Array.from(new Set([f0, f1].concat(cuts.filter((f, i, a) => i === 0 || f - a[i - 1] > 10), hand.flatMap((r) => [Math.max(f0, r[0]), Math.min(f1, r[1])])))).sort((x, y) => x - y);
   // a stretch of under 1.5 s between two jumps is dropped: one ▶▶ card covers both
   const drop = new Set();
-  for (let i = 1; i < bounds.length - 2; i++) if (bounds[i + 1] - bounds[i] < 45) drop.add(i);
+  for (let i = 1; i < bounds.length - 2; i++) if (bounds[i + 1] - bounds[i] < 45 && isCut.has(bounds[i])) drop.add(i);
+  for (let i = 0; i < bounds.length - 1; i++) if (handIn(bounds[i], bounds[i + 1])) drop.add(i);
   const still = path.join(wd, 'still.png');
   ff(['-ss', ((Math.min(f1 - 1, f0 + 60)) / FPS).toFixed(3), '-i', src, '-frames:v', '1', still]);
   const list = [];
@@ -1755,7 +1815,7 @@ function editChapter(chId) {
   for (let i = 0; i < bounds.length - 1; i++) {
     const a = bounds[i], b = bounds[i + 1];
     if (b - a < 2 || drop.has(i)) continue;
-    if (i > 0) { const cf = 'f' + String(i).padStart(3, '0') + '.mp4'; tOut += ffCard(src, (a + 1) / FPS, path.join(wd, cf)); list.push(cf); cards++; }
+    if (i > 0 && (isCut.has(a) || drop.has(i - 1))) { const cf = 'f' + String(i).padStart(3, '0') + '.mp4'; tOut += ffCard(src, (a + 1) / FPS, path.join(wd, cf)); list.push(cf); cards++; }
     const f = 'c' + String(i + 1).padStart(3, '0') + '.mp4';
     ff(['-ss', (a / FPS).toFixed(4), '-i', src, '-frames:v', String(b - a), '-an', '-vf', 'fps=30,format=yuv420p', '-c:v', 'libx264', '-crf', '14', '-preset', 'veryfast', path.join(wd, f)]);
     list.push(f);
@@ -1796,7 +1856,8 @@ function frames(chId) {
 /** QA: frame-to-frame differences (frozen runs), black frames */
 function qa(chId) {
   const f = path.join(CHAP, chId + '.mp4');
-  const r = cp.spawnSync('ffmpeg', ['-hide_banner', '-i', f, '-vf', 'tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG,blackdetect=d=0.3:pix_th=0.06', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+  // frame-to-frame difference (frozen runs) on one branch; black frames (blackdetect on the picture itself) on the other
+  const r = cp.spawnSync('ffmpeg', ['-hide_banner', '-i', f, '-filter_complex', '[0:v]split[a][b];[a]tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG[d];[b]blackdetect=d=0.1:pix_th=0.06[k]', '-map', '[d]', '-f', 'null', '-', '-map', '[k]', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 });
   const lines = (r.stderr || '').split('\n');
   const diffs = [];
   for (const l of lines) { const m = /lavfi\.signalstats\.YAVG=([\d.]+)/.exec(l); if (m) diffs.push(+m[1]); }
@@ -1858,9 +1919,10 @@ function hlPicks(id, cand, dur) {
 function highlights(ids) {
   ensureFonts();
   const wd = path.join(WORK, 'hl');
-  fs.rmSync(wd, { recursive: true, force: true }); fs.mkdirSync(wd, { recursive: true });
+  if (!process.env.HL_DRY) { fs.rmSync(wd, { recursive: true, force: true }); fs.mkdirSync(wd, { recursive: true }); }
   const F = (n) => path.join(FONTS, n + '.ttf');
   const list = [];
+  const HLP = readJSON(path.join(VIDEO, 'hl_picks.json'), {}) || {};
   let n = 0, total = 0;
   for (const id of ids) {
     const sess = sessionOf(id);
@@ -1868,7 +1930,11 @@ function highlights(ids) {
     const c = progress.chapters[id];
     if (!tl || !c) continue;
     const dur = c.dur;
-    const chosen = hlPicks(id, hlCandidates(tl, id), dur);
+    // hand picks (video3d/hl_picks.json: {chapter: [[t, len, what], ...]} in chapter seconds) replace the automatic ones
+    const hand = HLP[id];
+    const chosen = hand ? hand.map((q) => ({ t: q[0], off: 0, len: q[1], what: q[2] || 'hand' })) : hlPicks(id, hlCandidates(tl, id), dur);
+    log('   hl ' + id + ': ' + chosen.map((q) => (q.what || 'fix') + '@' + (q.t + (q.off || 0)).toFixed(1) + '+' + q.len).join(', '));
+    if (process.env.HL_DRY) continue;
     for (const q of chosen) {
       const a = Math.max(c.title + 0.2, Math.min(dur - q.len - 0.5, q.t + q.off));
       const f = 'h' + String(++n).padStart(3, '0') + '.mp4';
@@ -1879,6 +1945,7 @@ function highlights(ids) {
       list.push(f); total += q.len;
     }
   }
+  if (process.env.HL_DRY) return null;
   const still = path.join(wd, 'still.png');
   ff(['-ss', '3', '-i', path.join(CHAP, ids[Math.min(1, ids.length - 1)] + '.mp4'), '-frames:v', '1', still]);
   titleCard({ top: 'HIGHLIGHTS · 3D', title: 'Nostalgia', sub: 'Hyderabad 2003 · the whole story in a few minutes' }, still, path.join(wd, 'h000.mp4'));
