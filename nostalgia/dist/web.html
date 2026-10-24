@@ -1577,6 +1577,54 @@ body.touch-on .osd-cas { width: 44px; height: 32px; margin: -6px -6px; }
 .osd-tape.paused .tp-pause { display: inline; }
 .osd-tape.paused .tp-num { border-color: rgba(154, 152, 168, 0.5); }
 .osd-tape.rolling .tp-num { color: #fff3c8; border-color: #fff3c8; }
+.osd-mus, .hud-mus {
+  display: none;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 1px 6px 0 4px;
+  border: 1px solid rgba(234, 242, 255, 0.35);
+  border-radius: 2px;
+  background: rgba(10, 8, 20, 0.35);
+  color: var(--osd);
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  line-height: 1.1;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+.osd-mus.show { display: inline-flex; }
+.osd-mus i, .hud-mus i { font-style: normal; font-size: 1.1em; }
+.osd-mus:hover, .hud-mus:hover { border-color: rgba(234, 242, 255, 0.75); }
+.osd-mus:active, .hud-mus:active { transform: translateY(1px); }
+.osd-mus.flash, .hud-mus.flash { animation: mus-flash 1s ease-out; }
+/* the second ♪, under the minimap where that sits top-left (touch, short landscape; beside it in phone portrait) */
+.hud-mus {
+  position: absolute;
+  z-index: 1;
+  left: calc(12px + var(--safe-l));
+  top: calc(80px + 112px + 12px + var(--safe-t));
+  font-family: var(--font-osd);
+  text-shadow: 2px 2px 0 var(--osd-shadow), 0 0 6px var(--osd-glow);
+  zoom: var(--hudz);
+}
+body.touch-on .osd-mus.show { display: none; }
+body.touch-on .hud-mus.show { display: inline-flex; }
+@media (max-width: 600px) and (orientation: portrait) {
+  /* beside the minimap's lower edge (under it is where the objective strip and the timer come down) */
+  .osd-mus.show { display: none; }
+  .hud-mus.show { display: inline-flex; }
+  .hud-mus, body.touch-on .hud-mus { top: calc(80px + 112px - 28px + var(--safe-t)); left: calc(12px + 112px + 14px + var(--safe-l)); }
+  body:not(.touch-on) .hud-mus { top: calc(84px + 112px - 28px + var(--safe-t)); left: calc(10px + 112px + 14px + var(--safe-l)); }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .osd-mus.show { display: none; }
+  .hud-mus.show { display: inline-flex; }
+  .hud-mus { top: calc(78px + 96px + 10px + var(--safe-t)); }
+}
+@keyframes mus-flash { 0%, 30% { background: rgba(255, 243, 200, 0.85); color: #1a1020; border-color: #fff3c8; } 100% { background: rgba(10, 8, 20, 0.35); } }
+body.touch-on .hud-mus { font-size: 16px; padding: 4px 10px 3px 8px; }
 .osd-rec { display: none; color: #ff5a46; text-shadow: 2px 2px 0 #4a0a0a, 0 0 8px rgba(255, 70, 50, 0.75); }
 .osd-rec.show { display: inline; animation: osd-blink 0.9s steps(2, start) infinite; }
 .osd-tape.rec-declined + .osd-rec { color: #c8c2d0; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6); }
@@ -4086,18 +4134,18 @@ if (N.errors.length > 50) N.errors.shift();
 'use strict';
 const N = window.N;
 const { clamp } = N.util;
-const ACTIONS = ['up', 'down', 'left', 'right', 'action', 'run', 'horn', 'map', 'journal', 'pause', 'radio', 'view'];
+const ACTIONS = ['up', 'down', 'left', 'right', 'action', 'run', 'horn', 'map', 'journal', 'pause', 'radio', 'view', 'music'];
 const KEYMAP = {
 KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down',
 KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
 KeyE: 'action', KeyF: 'action', Enter: 'action', NumpadEnter: 'action',
 ShiftLeft: 'run', ShiftRight: 'run', Space: 'horn',
 KeyM: 'map', KeyJ: 'journal', Escape: 'pause', KeyP: 'pause', KeyQ: 'radio', KeyR: 'radio',
-KeyV: 'view',
+KeyV: 'view', KeyB: 'music',
 };
-const PADMAP = { 0: 'action', 1: 'horn', 2: 'run', 3: 'radio', 4: 'journal', 5: 'run', 7: 'run', 8: 'map', 9: 'pause', 11: 'view', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
+const PADMAP = { 0: 'action', 1: 'horn', 2: 'run', 3: 'radio', 4: 'journal', 5: 'run', 7: 'run', 8: 'map', 9: 'pause', 10: 'music', 11: 'view', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
 const DEFAULT_KEYMAP = Object.assign({}, KEYMAP);
-const PRIMARY = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', action: 'KeyE', run: 'ShiftLeft', horn: 'Space', map: 'KeyM', journal: 'KeyJ', pause: 'KeyP', radio: 'KeyQ', view: 'KeyV' };
+const PRIMARY = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', action: 'KeyE', run: 'ShiftLeft', horn: 'Space', map: 'KeyM', journal: 'KeyJ', pause: 'KeyP', radio: 'KeyQ', view: 'KeyV', music: 'KeyB' };
 const FIXED_CODES = { Escape: 1, Tab: 1, F5: 1, F11: 1, F12: 1, MetaLeft: 1, MetaRight: 1, ContextMenu: 1 };
 const BIND_KEY = 'nostalgia.keys.v1';
 let customKeys = {};
@@ -4552,7 +4600,7 @@ const pick = (a) => a[(rnd() * a.length) | 0];
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 const A = {};
 N.audio = A;
-const S = { master: 0.85, music: 0.6, sfx: 0.85, radio: 0.75, ambient: 0.65, muted: false };
+const S = { master: 0.85, music: 0.6, sfx: 0.85, radio: 0.75, ambient: 0.65, muted: false, style: 'score' };
 (function loadSettings() {
 try {
 const raw = localStorage.getItem(KEY);
@@ -7696,7 +7744,21 @@ sm.chain.em.set(sm.place.x, sm.place.y, 8);
 sm.chain.em.setGain(L ? 0.6 : 0);
 }
 }
-const music = { cur: null, seq: null, lockId: null, lockDone: false, moodId: null, restUntil: 0, victoryAt: 0, victoryUntil: 0, stingUntil: 0, introUntil: 0, chaseUntil: 0, roamDiffSince: 0, ended: false, trackTape: 0 };
+const music = { cur: null, seq: null, lockId: null, lockDone: false, moodId: null, restUntil: 0, victoryAt: 0, victoryUntil: 0, stingUntil: 0, introUntil: 0, chaseUntil: 0, roamDiffSince: 0, ended: false, trackTape: 0, mixAlt: false };
+const STYLES = { score: { name: 'Original score', short: 'ORIGINAL', map: {} } };
+const STYLE_ORDER = ['score'];
+const styleIds = () => STYLE_ORDER.concat(STYLE_ORDER.length > 1 ? ['mix'] : []);
+const styleName = (id) => (id === 'mix' ? 'Both, taking turns' : STYLES[id] ? STYLES[id].name : id);
+const styleShort = (id) => (id === 'mix' ? 'BOTH' : STYLES[id] ? STYLES[id].short || id.toUpperCase() : id);
+function styleNow() {
+const id = styleIds().indexOf(S.style) >= 0 ? S.style : 'score';
+if (id !== 'mix') return id;
+return music.mixAlt ? STYLE_ORDER[1] : 'score';
+}
+function styled(cue) {
+const st = STYLES[styleNow()], id = st && st.map[cue];
+return id && TRACKS[id] ? id : cue;
+}
 function wantedLevel() {
 const w = N.wanted;
 if (w) { const l = w.level != null ? w.level : w.value != null ? w.value : w.meter; if (typeof l === 'number') return l; }
@@ -7720,7 +7782,7 @@ if (radio.on && radio.seq) return null;
 if (walkman.seq) return null;
 if (music.stingUntil > now) return null;
 if (wantedLevel() >= 3) music.chaseUntil = now + 4;
-if (music.chaseUntil > now) { if (wantedLevel() >= 5 && TRACKS.chase5) music.chase5 = true; return music.chase5 ? 'chase5' : 'chase'; }
+if (music.chaseUntil > now) { if (wantedLevel() >= 5 && TRACKS.chase5) music.chase5 = true; return styled(music.chase5 ? 'chase5' : 'chase'); }
 music.chase5 = false;
 if (music.victoryUntil > now) return now >= music.victoryAt ? 'victory' : null;
 if (music.moodId) return music.moodId;
@@ -7728,12 +7790,13 @@ if (music.introUntil > now) return 'title';
 const m = N.missions && N.missions.active;
 if (m && typeof m === 'object' && typeof m.music === 'string' && TRACKS[m.music]) return m.music;
 if (music.restUntil > now) return null;
-const r = currentRoamTrack();
+const r = styled(currentRoamTrack());
 const cur = music.cur, curRoam = cur && TRACKS[cur] && TRACKS[cur].roam;
-if (curRoam && r !== cur) {
+if (curRoam && r !== cur && !music.styleJump) {
 if (!music.roamDiffSince) music.roamDiffSince = now;
 if (now - music.roamDiffSince < 10) return cur;
 } else music.roamDiffSince = 0;
+music.styleJump = false;
 return r;
 }
 function startMusic(id, fadeIn) {
@@ -7753,7 +7816,7 @@ if (sq && sq.done && !sq.stopped && now > sq.endTime + 0.3) {
 const id = music.cur;
 liveSeqs.delete(sq); sq.release(); music.seq = null; music.cur = null;
 if (id && id === music.lockId) { music.lockDone = true; music.ended = true; try { N.emit('music:ended', { id }); } catch (e) { } }
-else if (TRACKS[id] && TRACKS[id].roam) music.restUntil = now + rr(25, 50);
+else if (TRACKS[id] && TRACKS[id].roam) { music.restUntil = now + rr(25, 50); if (S.style === 'mix') music.mixAlt = !music.mixAlt; }
 if (id === 'victory') music.victoryUntil = 0;
 return;
 }
@@ -7955,6 +8018,7 @@ if (I.pressed && I.pressed('horn')) { A.horn(v ? v : 'foot'); hooks.hornRepeat =
 else if (v && I.down && I.down('horn') && now > hooks.hornRepeat && /car_horn|bus_horn/.test(hornFor(v.type))) { playSfx(hornFor(v.type), { force: true, dur: 0.42 }); hooks.hornRepeat = now + 0.38; }
 }
 if (I && I.pressed && I.pressed('radio') && v && vehicleHasRadio(v)) A.radio.next();
+if (I && I.pressed && I.pressed('music')) A.music.nextStyle();
 if (!v && now - hooks.footEvt > 1.5) {
 const sp0 = Math.hypot(p.vx || 0, p.vy || 0);
 if (sp0 > 12) {
@@ -8269,6 +8333,8 @@ A.tapeStop = (sec) => tapeStop(sec);
 const musicApi = function (id, o) { return id == null || id === false ? musicApi.stop() : musicApi.play(id, o); };
 Object.defineProperty(musicApi, 'current', { get: () => music.cur });
 Object.defineProperty(musicApi, 'ended', { get: () => music.ended });
+Object.defineProperty(musicApi, 'style', { get: () => (styleIds().indexOf(S.style) >= 0 ? S.style : 'score') });
+Object.defineProperty(musicApi, 'STYLES', { get: () => styleIds().map((id) => ({ id, name: styleName(id), short: styleShort(id) })) });
 A.music = Object.assign(musicApi, {
 TRACKS: Object.keys(TRACKS).filter((k) => !/^id_/.test(k)),
 title(id) { const t = TRACKS[id]; return t ? t.name || (TRACKS[t.base] && TRACKS[t.base].name) : null; },
@@ -8284,6 +8350,23 @@ mood(id) { music.moodId = id && TRACKS[id] ? id : null; if (music.moodId) music.
 intro(on) { music.introUntil = on && ctx ? ctx.currentTime + (typeof on === 'number' ? on : 40) : 0; },
 sections(id) { const c = TRACKS[id] && compile(id); return c ? c.tr.order.map((name, i) => ({ name, start: +c.times[c.secStart[i]].toFixed(3) })) : []; },
 position() { const sq = music.seq; return sq && ctx ? Math.max(0, ctx.currentTime - sq.t0) : 0; },
+setStyle(id, o) {
+if (styleIds().indexOf(id) < 0) return false;
+const prev = A.music.style;
+S.style = id; saveSettings();
+if (id === 'mix') music.mixAlt = prev !== STYLE_ORDER[1];
+music.restUntil = 0; music.roamDiffSince = 0; music.styleJump = true;
+const name = styleName(id);
+if (!(o && o.quiet)) {
+const k = N.input && N.input.keyName && N.input.keyFor ? N.input.keyName(N.input.keyFor('music')) : 'B';
+const yields = (radio.on && radio.seq) || walkman.seq ? ' (after the radio / walkman)' : '';
+try { if (N.hud && typeof N.hud.toast === 'function') N.hud.toast('♪ Background music: ' + name + yields + '  ·  ' + k + ' to switch', 2600, { key: 'music' }); } catch (e) { }
+}
+try { N.emit('music:style', { style: id, name }); } catch (e) { }
+return true;
+},
+nextStyle(o) { const ids = styleIds(); return A.music.setStyle(ids[(ids.indexOf(A.music.style) + 1) % ids.length], o) ? A.music.style : null; },
+styleName,
 });
 A.play = (name, o) => playSfx(name, o);
 A.stopMusic = (fade) => A.music.stop(fade);
@@ -8404,6 +8487,7 @@ registerScale(name, semis) { SCALES[name] = semis; },
 registerTrack(id, def) { TRACKS[id] = def; COMPILED.clear(); A.music.TRACKS = Object.keys(TRACKS).filter((k) => !/^id_/.test(k)); },
 registerStation(i, st) { STATIONS[i] = st; PLAYLISTS.length = 0; },
 registerSong(id, info) { SONGS[id] = info; },
+registerStyle(id, def) { if (!id || id === 'mix' || !def || !def.map) return false; STYLES[id] = { name: def.name || id, short: def.short || String(id).toUpperCase(), map: Object.assign({}, def.map) }; if (STYLE_ORDER.indexOf(id) < 0) STYLE_ORDER.push(id); return true; },
 registerEngine(type, profile) { ENGINES[type] = profile; },
 setEngineVoice(factory) { engineFactory = typeof factory === 'function' ? factory : null; },
 setHornFor(fn) { extHornFor = typeof fn === 'function' ? fn : null; },
@@ -9992,6 +10076,150 @@ if (ST && ST[1] && Array.isArray(ST[1].songs) && ST[1].songs.indexOf('ganesh') <
 } catch (e) { N.err('audio.score.catalogue', e); }
 })();
 </script>
+<script>/* src/audio_marfa.js */
+(() => {
+'use strict';
+const N = window.N;
+const X = N.audio && N.audio.ext;
+if (!X || !X.registerStyle) return;
+const P = X.P;
+const KITS = (N.audio._internal && N.audio._internal.KITS) || {};
+X.registerKit('jhanjh', {
+J: (ac, o, t, v) => { P.burst(ac, o, t, { ft: 'highpass', f: 5200, a: 0.001, r: 0.34, v: 0.2 * v }); P.burst(ac, o, t, { f: 3300, q: 1.4, a: 0.001, r: 0.1, v: 0.12 * v }); P.strike(ac, o, t, 1850, P.METAL, 0.032 * v, 0.42); return P.strike(ac, o, t + 0.003, 2015, P.METAL, 0.026 * v, 0.38); },
+j: (ac, o, t, v) => { P.burst(ac, o, t, { ft: 'highpass', f: 6200, a: 0.001, r: 0.05, v: 0.2 * v }); return P.strike(ac, o, t, 1900, P.METAL, 0.012 * v, 0.05); },
+Z: (ac, o, t, v) => { P.burst(ac, o, t, { ft: 'highpass', f: 4600, a: 0.001, r: 0.9, v: 0.24 * v }); P.strike(ac, o, t, 1700, P.METAL, 0.04 * v, 0.9); return P.strike(ac, o, t + 0.004, 1890, P.METAL, 0.034 * v, 0.8); },
+});
+const shout = (sy, n, f0, v) => (ac, o, t, vel) => {
+P.burst(ac, o, t, { kind: 'pink', f: 1500, q: 0.8, a: 0.004, r: 0.05, v: 0.1 * vel });
+return P.crowd(ac, o, t, { n, f0: f0 * P.rr(0.97, 1.03), spread: 4, jitter: 0.04, v: v * vel, sy });
+};
+X.registerKit('hoi', {
+H: shout([[0, 0.13, 'ho', 0, 1, 1], [0.12, 0.17, 'i', 2, 0.85, -4]], 6, 185, 0.55),
+h: shout([[0, 0.17, 'ay', 1, 1, -3]], 4, 200, 0.45),
+O: shout([[0, 0.42, 'o', 0, 0.9, 3], [0.4, 0.22, 'i', 5, 0.85, -5]], 6, 180, 0.5),
+});
+const J = (...b) => b.join(' | ');
+const rep = (s, n) => Array(n).fill(s).join(' | ');
+const cyc = (n, pats, fill) => { const o = []; for (let i = 0; i < n; i++) o.push(fill && i % 4 === 3 ? fill : pats[i % pats.length]); return o.join(' | '); };
+const R12 = '. . . . . . . . . . . .', R4 = '. . . .';
+const reg = (id, def) => { try { X.registerTrack(id, def); } catch (e) { N.err('audio.marfa.' + id, e); } };
+X.registerScale('hijaz', [0, 1, 4, 5, 7, 8, 10]);
+const MK = KITS.marfa && KITS.marfa.B ? { kit: 'marfa', m: (p) => p } : { kit: 'band', m: (p) => p.replace(/[A-Za-z]+/g, (s) => ({ B: 'B', b: 'M', k: 'p', t: 'p' })[s] || s) };
+const TK = KITS.tasha && KITS.tasha.R ? { kit: 'tasha', m: (p) => p } : { kit: 'band', m: (p) => p.replace(/[A-Za-z]+/g, (s) => ({ T: 'T', t: 'p', R: 'R', D: 'P' })[s] || s) };
+const MA1 = 'B . k B . k B k k B . k', MA2 = 'B . k B . k B . k B k k', MA3 = 'B . t B . k B . t B k t';
+const MAF = 'B k k B k k B k k B! . .', MAS = 'B . . k . k B . . k . k';
+const MAD = 'B k k B k k B k k B k k', MAD2 = 'B! k k B k k B! k k B k B!';
+const DH1 = 'D . t . t . D . t . t t', DH2 = 'D . t D . t . t D t . t', DHF = 'D t t D t t R . . D! . .', DHD = 'D t t D t t D t t D t t';
+const TA1 = 'T t t T t t T t t T t t', TA2 = 'R . t T . t R . t T t t', TAF = 'R . . R . . R . . R R R', TAD = 'R t t R t t R t t R t T!';
+const JH1 = '. . j . . j . . j . . j', JH2 = 'J . j . . j J . j . . j', JHD = 'J . j J . j J . j J . j';
+const CL1 = 'x . . . . . x . . . . .', CL2 = 'x . . x . . x . . x . .', CL3 = 'X . . x . x X . . x . x';
+const HO = '. . . . . . . . . H . .';
+const BAND = (o, dk) => {
+const k = dk || 1;
+return Object.assign({
+marfa: { kit: MK.kit, div: 1, vol: 0.78 * k, rev: 0.12 },
+dhol: { kit: 'dhol', div: 1, vol: 0.42 * k, pan: -0.22, rev: 0.08 },
+tasha: { kit: TK.kit, div: 1, vol: 0.36 * k, pan: 0.28, rev: 0.1 },
+jh: { kit: 'jhanjh', div: 1, vol: 0.42 * k, pan: 0.12, rev: 0.15 },
+claps: { kit: 'clap', div: 1, vol: 0.4 * k, pan: -0.1, rev: 0.22 },
+hoi: { kit: 'hoi', div: 1, vol: 0.5 * k, rev: 0.28, pan: 0.05 },
+}, o);
+};
+const CALL = J('5 - - 6 5 4 3 - - 2 - -', '3 - 4 5 - 4 3 2 - 1 - -', '1 - 2 3 - 4 5 - 6 ^1 - -', '7 6 5 6 - 5 4 3 2 1 - -');
+const RESP = J('^1 - - 7 6 - 5 - 6 7 - ^1', '6 - - 5 4 - 3 - 2 3 - -', '5 - 4 3 - 2 1 - 2 3 4 5', '3 - 2 1 - - . . . . . .');
+const SHB = J('5 - 6 5 - 4 5 - - . . .', '6 - 7 6 - 5 6 - - . . .', '7 - ^1 7 6 5 6 5 4 3 - -', '2 3 4 3 - 2 1 - - . . .',
+'5 - 6 5 - 4 5 - - 3 4 5', '6 - 7 6 - 5 6 - - 5 6 7', '^1 - 7 6 - 5 4 - 3 2 - 3', '1 - - - - - . . . . . .');
+reg('marfa_day', {
+name: 'Barkas Ki Marfa', bpm: 92, root: 62, scale: 'hijaz', meter: 12, loopTo: 1, gain: 0.9, roam: true,
+parts: BAND({
+cl: { inst: 'clarinet', div: 1, oct: 0, vol: 0.85, rev: 0.25, pan: -0.18 },
+sh: { inst: 'shehnai', div: 1, oct: 1, vol: 0.8, rev: 0.28, pan: 0.2, ev: { kan: true } },
+}, 0.75),
+sections: {
+intro: { bars: 2, marfa: MK.m(J('B! . . . . . B! . . . . .', 'B . . B . . B k k B! . .')), jh: J(R12, '. . . . . . . . . Z . .'), hoi: J(R12, HO) },
+A: { bars: 8, marfa: MK.m(cyc(8, [MA1, MA2], MAF)), dhol: cyc(8, [DH1, DH2], DHF), jh: JH1, claps: CL1, hoi: cyc(8, [R12], HO), cl: J(CALL, RESP) },
+B: { bars: 8, marfa: MK.m(cyc(8, [MA2, MA1], MAF)), dhol: cyc(8, [DH2, DH1], DHF), tasha: TK.m(cyc(8, [TA1, TA2], TAF)), jh: JH2, claps: CL2, hoi: cyc(8, [R12], HO),
+sh: SHB, cl: SHB, vol: { cl: 0.55 } },
+brk: { bars: 4, marfa: MK.m(J(MAS, MAS, MAS, MAF)), dhol: J('d . . . . . d . . . . .', 'd . . . . . d . . . . .', DH1, DHF),
+tasha: TK.m(J(R12, R12, 'R . . R . . R . . R . .', TAF)), claps: J(CL2, CL2, CL3, CL3), jh: J(R12, R12, JH1, '. . . . . . . . . Z . .'),
+hoi: J(R12, '. . . . . . . . . h . .', R12, '. . . . . . H . . H . .') },
+A2: { bars: 8, marfa: MK.m(cyc(8, [MA1, MA2], MAF)), dhol: cyc(8, [DH1, DH2], DHF), tasha: TK.m(TA1), jh: JH2, claps: CL2, hoi: cyc(8, [R12], HO),
+cl: J(CALL, RESP), sh: J(rep(R12, 4), RESP), vol: { tasha: 0.8 } },
+C: { bars: 8, bpm: [92, 100], marfa: MK.m(cyc(8, [MAD, MAD2], MAF)), dhol: cyc(8, [DHD, DH2], DHF), tasha: TK.m(cyc(8, [TAD, TA1], TAF)), jh: JHD, claps: CL3,
+hoi: cyc(8, [R12], HO), sh: SHB, cl: SHB, vol: { marfa: 1.05, cl: 0.6 } },
+end: { bars: 1, bpm: 100, marfa: MK.m('B! . . B! . . B! . . . . .'), dhol: 'D! . . D! . . D! . . . . .', tasha: TK.m('R . . R . . T! . . . . .'), jh: '. . . . . . Z . . . . .', hoi: '. . . . . . O . . . . .', sh: '1 - - 1 - - 1 - - - - -' },
+},
+order: ['intro', 'A', 'B', 'brk', 'A2', 'C', 'end'],
+});
+const NM1 = 'b . . t . t b . . t . .', NM2 = 'b . . t . . b . t t . .', NMF = 'b . t b . t b . t B . .';
+const SAR = J('~5 - - 6', '5 - 4 3', '~2 - - 3', '1 - - -', '3 - 4 5', '~6 - 5 4', '3 - ~2 -', '1 - - -');
+const SHN = J('^1 - - 7', '6 - 5 -', '6 - 7 ^1', '~^2 - ^1 -', '7 - 6 5', '4 - 3 -', '~2 - - 3', '1 - - -');
+reg('marfa_night', {
+name: 'Raat Ki Marfa', bpm: 66, root: 57, scale: 'hijaz', meter: 12, loopTo: 1, gain: 1.0, roam: true,
+parts: {
+marfa: { kit: MK.kit, div: 1, vol: 0.7, rev: 0.3 },
+dhol: { kit: 'dhol', div: 1, vol: 0.3, pan: -0.2, rev: 0.2 },
+jh: { kit: 'jhanjh', div: 1, vol: 0.3, pan: 0.2, rev: 0.35 },
+drone: { inst: 'tanpura', div: 3, oct: -1, vol: 0.45, rev: 0.35 },
+hm: { type: 'chord', inst: 'harmonium', div: 12, oct: -1, vol: 0.3, rev: 0.3, pan: -0.15 },
+sar: { inst: 'sarangi', div: 3, oct: 0, vol: 0.75, rev: 0.4, pan: -0.1, ev: { gamak: 0.3 } },
+sh: { inst: 'shehnai', div: 3, oct: 0, vol: 0.55, rev: 0.45, pan: 0.2 },
+},
+sections: {
+intro: { bars: 2, cdiv: 12, chords: '1 1', drone: '5 ^1 ^1 1', hm: 'x', marfa: MK.m(J(R12, 'b . . . . . b . . . . .')), sar: J('. . . ~5', '- - 4 3') },
+A: { bars: 8, cdiv: 12, chords: '1 1 7 1 2 1 7 1', drone: '5 ^1 ^1 1', hm: 'x', marfa: MK.m(cyc(8, [NM1, NM2], NMF)), dhol: 'd . . . . . . . . . . .',
+jh: '. . . . . . j . . . . .', sar: SAR },
+B: { bars: 8, cdiv: 12, chords: '4 1 2 1 4 1 2 1', drone: '5 ^1 ^1 1', hm: 'x', marfa: MK.m(cyc(8, [NM2, NM1], NMF)), dhol: 'd . . . . . d . . . . .',
+jh: '. . . . . . j . . . . j', sh: SHN, sar: J(rep(R4, 6), '5 - - -', '1 - - -'), vol: { sar: 0.6 } },
+C: { bars: 8, cdiv: 12, chords: '1 1 7 1 2 1 7 1', drone: '5 ^1 ^1 1', hm: 'x', marfa: MK.m(cyc(8, [NM1, 'b . . . . . b . . t . .'], NMF)), dhol: 'd . . . . . . . . . . .',
+jh: '. . . . . . j . . . . .', sar: SAR, sh: J(rep(R4, 4), '3 - 4 5', '~6 - 5 4', '3 - ~2 -', '1 - - -'), vol: { sh: 0.75 } },
+},
+order: ['intro', 'A', 'B', 'C'],
+});
+const BA1 = J('1 - 3 - 4 - 5 - - 4 5 6', '5 - - 4 3 - 2 - 3 - - -', '4 - 5 - 6 - 5 - 4 3 - 2', '3 - - 2 1 - - - . . . .');
+const BA2 = J('5 - 6 - 7 - ^1 - - 7 ^1 ^2', '^1 - - 7 6 - 5 - 6 - - -', '5 - 6 5 4 - 3 4 5 - 4 3', '2 - - 1 _7 - 1 - - . . .');
+const BA_CH = '1 1 4 1 1 2 4 1';
+reg('marfa_oldcity', {
+name: 'Charminar Ki Baraat', bpm: 96, root: 58, scale: 'hijaz', meter: 12, loopTo: 1, gain: 0.85, roam: true,
+parts: BAND({
+tpt: { inst: 'trumpet', div: 1, oct: 1, vol: 1.0, rev: 0.22, pan: -0.12 },
+cl: { inst: 'clarinet', div: 1, oct: 1, vol: 0.62, rev: 0.22, pan: 0.18 },
+brass: { type: 'chord', inst: 'brass', div: 3, oct: 0, vol: 0.3, rev: 0.18, pan: -0.25 },
+tuba: { inst: 'tuba', div: 3, oct: -2, vol: 0.62, rev: 0.08 },
+}, 0.66),
+sections: {
+intro: { bars: 2, marfa: MK.m(J('B! . . B! . . B! . . B! . .', MAF)), tasha: TK.m(J(TAF, 'R R R R R R R R R T! . .')), jh: J(R12, '. . . . . . . . . Z . .'), hoi: J(R12, HO) },
+L1: { bars: 8, cdiv: 12, chords: BA_CH, marfa: MK.m(cyc(8, [MA1, MA3], MAF)), dhol: cyc(8, [DH1, DH2], DHF), jh: JH1, claps: CL1, hoi: cyc(8, [R12], HO),
+tpt: J(BA1, BA2), tuba: 'r . f .' },
+L2: { bars: 8, cdiv: 12, chords: BA_CH, marfa: MK.m(cyc(8, [MA2, MA1], MAF)), dhol: cyc(8, [DH2, DH1], DHF), tasha: TK.m(cyc(8, [TA1, TA2], TAF)), jh: JH2, claps: CL2,
+hoi: cyc(8, [R12], HO), tpt: J(BA1, BA2), cl: J(BA1, BA2), brass: 'x . x .', tuba: 'r . f .', vol: { tpt: 1.15, cl: 1.1 } },
+brk: { bars: 4, marfa: MK.m(J(MAS, MAS, MAD, MAF)), dhol: J(DH1, DH1, DHD, DHF), tasha: TK.m(J(R12, TA2, TAF, TAF)), claps: J(CL2, CL2, CL3, CL3),
+hoi: J('H . . . . . . . . . . .', R12, 'H . . . . . H . . . . .', HO), jh: J(R12, JH1, JHD, '. . . . . . . . . Z . .') },
+L3: { bars: 12, bpm: [100, 106], cdiv: 12, chords: BA_CH + ' 1 1 4 1', marfa: MK.m(cyc(12, [MAD, MAD2], MAF)), dhol: DHD, tasha: TK.m(cyc(12, [TAD, TA1], TAF)), jh: JHD, claps: CL3,
+hoi: cyc(12, [R12], HO), tpt: J(BA1, BA2, BA1), cl: J(BA1, BA2, BA1), brass: 'x . x x', tuba: 'r . f .', vol: { tpt: 1.22, cl: 1.15 } },
+tag: { bars: 2, bpm: 106, cdiv: 12, chords: '1 1', marfa: MK.m(J('B! . . B! . . B! . . B! . .', 'B! . . . . . . . . . . .')), dhol: J('D! . . D! . . D! . . D! . .', 'D! . . . . . . . . . . .'),
+tasha: TK.m(J('R R R R R R R R R R R R', 'T! . . . . . . . . . . .')), jh: J(R12, 'Z . . . . . . . . . . .'), hoi: J(R12, 'O . . . . . . . . . . .'),
+tpt: J('5 - 4 3 - 2 1 - - 1 - -', '1 - - - - - . . . . . .'), cl: J('5 - 4 3 - 2 1 - - 1 - -', '1 - - - - - . . . . . .'), brass: 'x . . . | x . . .', tuba: 'r . . . | r . . .' },
+},
+order: ['intro', 'L1', 'L2', 'brk', 'L3', 'tag'],
+});
+const CR = J('5 5 . 5 6 5 4 - 3 2 - 3', '4 4 . 4 5 4 3 - 2 1 - -');
+const CR2 = J('^1 ^1 . ^1 7 6 7 - 6 5 - 6', '7 6 5 4 3 2 3 - 2 1 - -');
+reg('marfa_chase', {
+name: 'Marfa Ki Daud', bpm: 120, root: 62, scale: 'hijaz', meter: 12, loopTo: 0, gain: 0.82,
+parts: BAND({ sh: { inst: 'shehnai', div: 1, oct: 1, vol: 1.1, rev: 0.2, pan: 0.15, ev: { kan: true } }, cl: { inst: 'clarinet', div: 1, oct: 0, vol: 0.7, rev: 0.2, pan: -0.2 } }, 0.6),
+sections: {
+A: { bars: 8, marfa: MK.m(cyc(8, [MAD, MA2], MAF)), dhol: cyc(8, [DHD, DH2], DHF), tasha: TK.m(cyc(8, [TAD, TA1], TAF)), jh: JHD, hoi: cyc(8, [R12], HO), sh: J(CR, CR, CR2, CR), cl: J(CR, CR, CR2, CR) },
+B: { bars: 8, marfa: MK.m(cyc(8, [MAD2, MAD], MAF)), dhol: DHD, tasha: TK.m(cyc(8, [TA1, TAD], TAF)), jh: JHD, claps: CL2, hoi: cyc(8, [R12], HO), sh: J(CR2, CR, CR2, CR), cl: J(CR2, CR, CR2, CR) },
+},
+order: ['A', 'B'],
+});
+X.registerStyle('marfa', {
+name: 'Marfa band (Hyderabad)', short: 'MARFA',
+map: { day: 'marfa_day', hitec: 'marfa_day', cantonment: 'marfa_day', night: 'marfa_night', oldcity: 'marfa_oldcity', chase: 'marfa_chase', chase5: 'marfa_chase' },
+});
+})();
+</script> <!-- the Hyderabadi marfa band: a second background music (B switches: original / marfa / both) -->
 <script>/* src/audio_vehicles.js */
 (() => {
 'use strict';
@@ -40576,7 +40804,7 @@ money: null, moneyShown: 0, moneyAnim: null, energy: -1, exhausted: null, wanted
 clock: '', dateDay: -1, district: null, distCand: null, distT: 0, distCheck: 0,
 timer: null, toasts: [], tq: [], banners: [], bannerT: 0, bannerCur: null,
 hidden: false, mmT: 0, tummy: -1, hungry: null, tape: '', tapeCls: '', rec: '', loop: null, dateLbl: '',
-qitem: undefined, qT: 0, walk: '', distPending: null, caps: [], circles: new Map(), jc: null,
+qitem: undefined, qT: 0, walk: '', distPending: null, caps: [], circles: new Map(), jc: null, mus: null,
 };
 function el(tag, cls, parent, html) {
 const e = document.createElement(tag);
@@ -40660,7 +40888,8 @@ dom.osd = el('div', 'hud-osd', root,
 '<span class="osd-tape"><span class="tp-side">SIDE A</span><span class="tp-pause">&#9632; PAUSED</span><span class="tp-num">000</span></span>' +
 '<span class="osd-rec">&#9679; REC</span></div>' +
 '<div class="osd-row2"><span class="osd-time">--:--</span><span class="osd-date"></span><span class="osd-year"></span><span class="osd-loop" title="the week loops">&#8635;</span></div>' +
-'<div class="osd-dist"></div>');
+'<div class="osd-dist"></div>' +
+'<button type="button" class="osd-mus interactive" tabindex="-1" aria-label="Background music"><i>&#9835;</i><span class="mu-name"></span></button>');
 dom.time = dom.osd.querySelector('.osd-time');
 dom.date = dom.osd.querySelector('.osd-date');
 dom.year = dom.osd.querySelector('.osd-year');
@@ -40670,6 +40899,15 @@ dom.tape = dom.osd.querySelector('.osd-tape');
 dom.tapeNum = dom.osd.querySelector('.tp-num');
 dom.rec = dom.osd.querySelector('.osd-rec');
 dom.cas = dom.osd.querySelector('.osd-cas');
+dom.mus = [dom.osd.querySelector('.osd-mus'), el('button', 'hud-mus interactive', root, '<i>&#9835;</i><span class="mu-name"></span>')];
+for (const b of dom.mus) {
+b.type = 'button'; b.tabIndex = -1; b.setAttribute('aria-label', 'Background music');
+b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
+b.addEventListener('click', (e) => {
+e.preventDefault(); e.stopPropagation();
+try { const A = N.audio; if (A && A.unlock && !A.ready) A.unlock(); if (A && A.music && A.music.nextStyle) A.music.nextStyle(); } catch (er) { N.err('hud.mus', er); }
+});
+}
 const casUp = () => { if (dom.cas._held) { dom.cas._held = false; dom.cas.classList.remove('on'); try { N.input.hold('radio', false); } catch (e) { N.err('hud.cas', e); } } };
 dom.cas.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); dom.cas._held = true; dom.cas.classList.add('on'); try { N.input.hold('radio', true); } catch (er) { N.err('hud.cas', er); } });
 dom.cas.addEventListener('pointerup', casUp);
@@ -41072,6 +41310,17 @@ const cls = (TP.paused ? 'paused ' : '') + (TP.rolling ? 'rolling ' : '') + (R ?
 if (cls !== state.tapeCls) { state.tapeCls = cls; dom.tape.className = 'osd-tape ' + cls; dom.osd.classList.toggle('recording', !!R); }
 const rl = R ? R.label : '';
 if (rl !== state.rec) { state.rec = rl; dom.rec.textContent = rl || '● REC'; dom.rec.classList.toggle('show', !!R); }
+}
+const AM = N.audio && N.audio.music, sts = AM && AM.STYLES;
+const mu = sts && sts.length > 1 ? (sts.find((x) => x.id === AM.style) || sts[0]).short : '';
+if (mu !== state.mus) {
+const flash = !!(state.mus && mu);
+state.mus = mu;
+for (const b of dom.mus) {
+if (flash) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+b.querySelector('.mu-name').textContent = mu; b.classList.toggle('show', !!mu);
+b.title = mu ? 'Background music: ' + AM.styleName(AM.style) + ' (' + (N.input && N.input.keyName ? N.input.keyName(N.input.keyFor('music')) : 'B') + ')' : '';
+}
 }
 const WK = N.walkman && N.walkman.playing;
 const wl = WK ? '♪ ' + String(WK.title || '').toUpperCase() : '';
@@ -79552,6 +79801,10 @@ const SETTINGS_ROWS = [
 { sec: 'Sound' },
 { id: 'vol.master', label: 'Master volume', type: 'slider' },
 { id: 'vol.music', label: 'Music', type: 'slider' },
+{ id: 'music.style', label: 'Background music', type: 'seg', opts: SEG([['score', 'Original'], ['marfa', 'Marfa band'], ['mix', 'Both']]),
+help: () => 'Hyderabad\'s marfa drums (marfa, dhol, tasha, jhanjh) or the original score, or both taking turns. ' + (N.input && N.input.keyName && N.input.keyFor ? N.input.keyName(N.input.keyFor('music')) : 'B') + ' switches it any time (gamepad: L3; touch: the ♪ at the top).',
+get: () => (N.audio && N.audio.music && N.audio.music.style) || 'score',
+set: (v) => { if (N.audio && N.audio.music && N.audio.music.setStyle) N.audio.music.setStyle(v, { quiet: true }); } },
 { id: 'vol.sfx', label: 'Sound effects', type: 'slider' },
 { id: 'vol.radio', label: 'Radio & walkman', type: 'slider' },
 { id: 'vol.ambient', label: 'City ambience', type: 'slider' },
@@ -79576,6 +79829,7 @@ const SETTINGS_ROWS = [
 { id: 'key.journal', label: 'Journal', type: 'key', action: 'journal' },
 { id: 'key.radio', label: 'Walkman / radio', type: 'key', action: 'radio' },
 { id: 'key.view', label: 'Change view (top-down / 3D)', type: 'key', action: 'view' },
+{ id: 'key.music', label: 'Background music: original / marfa / both', type: 'key', action: 'music' },
 { id: 'key.pause', label: 'Pause (Esc always works)', type: 'key', action: 'pause' },
 { id: 'key.up', label: 'Move up / forward', type: 'key', action: 'up' },
 { id: 'key.down', label: 'Move down / brake', type: 'key', action: 'down' },
@@ -79650,9 +79904,9 @@ function controlsHelpHTML() {
 const I = N.input, k = (a) => esc(I && I.keyName && I.keyFor ? I.keyName(I.keyFor(a)) : '?');
 const L = {
 keyboard: '<b>Keyboard</b> ' + k('up') + k('left') + k('down') + k('right') + ' or arrows move · ' + k('action') + ' / Enter ACTION · ' + k('run') + ' run (handbrake on wheels) · ' +
-k('horn') + ' horn · ' + k('map') + ' map · ' + k('journal') + ' journal · ' + k('radio') + ' radio · ' + k('view') + ' view · Esc pause · 1–4 pick an answer',
-touch: '<b>Touch</b> drag the left side to move · yellow ACTION · red RUN / BRAKE · teal HORN (on foot near a road: calls an AUTO!) · the cassette = radio · MAP and ‖ at the top',
-gamepad: '<b>Gamepad</b> left stick move · A action · B horn (back in menus) · X / RB / RT run · Y radio · LB journal · Back map · Start pause · R3 view · right stick looks around in 3D',
+k('horn') + ' horn · ' + k('map') + ' map · ' + k('journal') + ' journal · ' + k('radio') + ' radio · ' + k('view') + ' view · ' + k('music') + ' music · Esc pause · 1–4 pick an answer',
+touch: '<b>Touch</b> drag the left side to move · yellow ACTION · red RUN / BRAKE · teal HORN (on foot near a road: calls an AUTO!) · the cassette = radio · ♪ = background music · MAP and ‖ at the top',
+gamepad: '<b>Gamepad</b> left stick move · A action · B horn (back in menus) · X / RB / RT run · Y radio · LB journal · Back map · Start pause · R3 view · L3 music · right stick looks around in 3D',
 };
 const first = I && L[I.device] ? I.device : 'keyboard';
 return [first].concat(Object.keys(L).filter((x) => x !== first)).map((x) => L[x]).join('<br>');
@@ -97350,6 +97604,7 @@ const TUNE = {
 w: 8, d: 6,
 h: 10.5, counter: 4.2, open: 9.0, sign: [11.2, 13.8], over: 1.6,
 ring: [12, 34], step: 3, angles: 28, gap: 18, kerb: [6, 18], kerbLoose: [4.5, 26], want: { r: 18, kerb: 9 },
+keep: { giver: 36, home: 36, stairs: 24, terrace: 24, place: 14 },
 near: 320, far: 440, keepers: 4,
 crowd: { n: 3, r: 14, hours: [8 * 60, 23 * 60 + 30], roles: { man: 3, youth: 2, uncle: 2, old: 1 } },
 };
@@ -97413,6 +97668,13 @@ function spotFor(a, rng, taken, OK, loose) {
 const W = N.world, hw = TUNE.w / 2, hd = TUNE.d / 2, KB = loose ? TUNE.kerbLoose : TUNE.kerb;
 const free = (x, y) => OK.has(W.surfaceAt(x, y));
 const r1 = Math.max(TUNE.ring[1], (a.r || 0) + 16) + (loose ? 14 : 0);
+const clear = [];
+for (const id in N.places) {
+const p = N.places[id];
+if (!p || id === a.id || p.kind === 'paan_shop') continue;
+const r = TUNE.keep[p.kind] || (/^giver_/.test(id) ? TUNE.keep.giver : TUNE.keep.place);
+if (Math.abs(p.x - a.x) < r1 + r && Math.abs(p.y - a.y) < r1 + r) clear.push({ x: p.x, y: p.y, r });
+}
 let best = null, bs = Infinity;
 for (let r = TUNE.ring[0]; r <= r1; r += TUNE.step) {
 for (let k = 0; k < TUNE.angles; k++) {
@@ -97420,6 +97682,7 @@ const ang = (k + rng.next() * 0.5) / TUNE.angles * TAU;
 const x = a.x + Math.cos(ang) * r, y = a.y + Math.sin(ang) * r;
 if (!free(x, y)) { no('ground'); continue; }
 if (taken.some((q) => Math.hypot(q.cx - x, q.cy - y) < TUNE.gap)) { no('gap'); continue; }
+if (clear.some((c) => Math.hypot(c.x - x, c.y - y) < c.r)) { no('place'); continue; }
 const rp = W.nearestRoadPoint(x, y);
 if (!rp) { no('road'); continue; }
 const rd = Math.hypot(rp.x - x, rp.y - y), kerb = rd - ((rp.road && rp.road.w) || 30) / 2;
