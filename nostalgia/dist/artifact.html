@@ -37950,12 +37950,18 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
  *    foot pursuers), goats in the old city, pigeon flocks that burst into flight (systems §11.3) — plus
  *    horn-scaring for the landmark flocks at Charminar / Mecca Masjid / Gulzar Houz (N.landmarks.flocks).
  *  - CONSTABLES on the podium junctions (N.world.podiums), whistling and directing the two axes.
- * Caps (TUNE.caps): desktop 28 vehicles / 45 peds / 12 animals, touch devices 20 / 32 / 9. Spawns happen
- * just outside the view, at most 2 per frame (8 right after a teleport), despawn out of view and far away.
+ * Caps (TUNE.caps): desktop 44 vehicles / 90 peds / 12 animals, touch devices 26 / 52 / 9 (2003 Hyderabad is never
+ * empty). How many and where follow a BUSYNESS grid (busyAt: the district style's level + a bump round every market,
+ * station, junction, cinema, temple, café, cart, bus stop... + the main roads), sampled round the camera for the
+ * targets (the whole cap only at the busiest corners' busiest hours: TUNE.busy.full), and taken as the odds a spawn
+ * spot is used (the busier spots fill first). Spawns happen out of sight, at
+ * most 2 per frame (8 right after a teleport), and go far away: top-down just off the screen; in 3D inside the
+ * drawing range (actorDist) wherever the camera is not looking, gone beyond it (TUNE.ring3d / gone3d).
  *
  * API  N.traffic = {
  *   enabled (false: no new spawns; clear() removes what exists), density (0..2 multiplier), setDensity(d),
- *   clear(pred?), TUNE, stats() -> {vehicles, peds, animals, flocks, ms}, vehicles [], peds [], animals [],
+ *   clear(pred?), TUNE, stats() -> {vehicles, peds, animals, flocks, targets, busy, ms}, busyAt(x, y) -> {ped, veh},
+ *   unseen(x, y, m) (out of the player's sight: the spawn rule), vehicles [], peds [], animals [],
  *   constables [] (podium actors; wanted.js uses them as spotters), claimAuto(x, y, r) -> an empty ambient
  *   auto released from traffic control (shops.js "AUTO!"), release(v) (stop controlling a vehicle),
  *   busAt(x, y, r) -> a bus stopped at a stop near (x, y) | null, spawnVehicle(type, {x, y, angle?, to?} | null),
@@ -37997,11 +38003,12 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
 
   /* ================================================================ tuning (systems §3.4, §11) */
   const TUNE = {
-    caps: { desk: { veh: 28, ped: 45, ani: 12, flocks: 4 }, mobile: { veh: 20, ped: 32, ani: 9, flocks: 3 } },
+    // (2003 Hyderabad's streets are never empty: raised from 28 / 45 and 20 / 32; the busyness grid below spreads them)
+    caps: { desk: { veh: 44, ped: 90, ani: 12, flocks: 4 }, mobile: { veh: 26, ped: 52, ani: 9, flocks: 3 } },
     // share of the vehicle cap by district style (systems §3.4 day targets 18/14/14/12/12/10/6/6, market = 1)
-    vehStyle: { market: 1, oldcity: 0.8, colonial: 0.8, colony: 0.68, cantonment: 0.68, posh: 0.56, hitec: 0.38, rocky: 0.36, osmania: 0.5 },
+    vehStyle: { market: 1, oldcity: 0.9, colonial: 0.85, colony: 0.75, cantonment: 0.72, posh: 0.62, hitec: 0.5, rocky: 0.42, osmania: 0.6 },
     // share of the ped cap (systems §11.2: 34/30/18/16/14/8/6/5, old city = 1)
-    pedStyle: { oldcity: 1, market: 0.9, colony: 0.56, cantonment: 0.5, colonial: 0.44, posh: 0.26, hitec: 0.2, rocky: 0.18, osmania: 0.5 },
+    pedStyle: { oldcity: 1, market: 0.95, colony: 0.72, cantonment: 0.6, colonial: 0.6, posh: 0.4, hitec: 0.34, rocky: 0.28, osmania: 0.66 },
     mix: {
       colony: { cycle: 22, ladiescycle: 8, luna: 10, chetak: 16, rx100: 6, auto: 18, ambassador: 4, maruti800: 8, padmini: 3, bus: 4, lorry: 1, rickshaw: 2 },
       market: { cycle: 12, ladiescycle: 4, luna: 6, chetak: 14, rx100: 6, auto: 26, ambassador: 6, maruti800: 8, padmini: 4, bus: 10, lorry: 4, rickshaw: 4 },
@@ -38032,7 +38039,24 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     // respect zones (systems §4.8): no horns within respectR of one, and traffic slows to respectCruise
     respectR: 40, respectCruise: 40,
     // spawn rings are offsets beyond the view's half-diagonal; despawn needs out-of-view AND beyond these
-    ringPed: [20, 170], ringVeh: [30, 210], ringAni: [24, 220], despawnPed: 330, despawnVeh: 440, despawnAni: 380,
+    ringPed: [16, 130], ringVeh: [30, 200], ringAni: [24, 200], despawnPed: 240, despawnVeh: 360, despawnAni: 320,
+    // 3D: spawns inside the drawing range (actorDist) where the camera is not looking: [from u, to x actorDist];
+    // gone beyond actorDist + these
+    ring3d: { ped: [30, 0.9], veh: [70, 0.95], ani: [40, 0.9] }, gone3d: { ped: 50, veh: 90, ani: 60 },
+    // how busy each spot is (see busyAt): place kind -> [people, traffic, radius u]; main roads -> [people, traffic];
+    // full: the busyness x time of day that asks for the whole cap (only the busiest corners at their busiest hour)
+    busy: {
+      G: 160, min: 0.22, max: 1.75, full: { ped: 1.15, veh: 1.25 },
+      places: {
+        market: [0.9, 0.5, 280], transport: [0.9, 0.7, 320], plaza: [0.9, 0.3, 280], festival: [0.4, 0.2, 260], junction: [0.35, 0.6, 240],
+        bus_stop: [0.35, 0.25, 130], cinema: [0.5, 0.35, 220], landmark: [0.25, 0.25, 220], school: [0.3, 0.15, 150],
+        temple: [0.35, 0.15, 170], mosque: [0.3, 0.12, 150], dargah: [0.3, 0.1, 130], church: [0.2, 0.08, 120],
+        irani_cafe: [0.3, 0.12, 120], restaurant: [0.3, 0.2, 130], food: [0.4, 0.15, 130], bakery: [0.2, 0.08, 100], iyengar_bakery: [0.15, 0.05, 90],
+        kirana: [0.12, 0.04, 80], chai_bandi: [0.18, 0.05, 80], samosa_bandi: [0.15, 0.04, 70], dosa_bandi: [0.12, 0.04, 70], paan_shop: [0.12, 0, 60],
+        medical_shop: [0.1, 0.05, 70], std_booth: [0.08, 0.03, 60], park: [0.25, 0, 200], playground: [0.15, 0, 120], museum: [0.2, 0.1, 160], jetty: [0.3, 0, 120],
+      },
+      roads: { arterial: [0.12, 0.32], bund: [0.1, 0.25], street: [0.06, 0.12], bridge: [0.04, 0.2] },
+    },
     spawnPerFrame: 2, fillPerFrame: 8, fillSecs: 0.9,
     // crowd zones: place kind / id -> {n: max wanderers, r, hours [from, to] (minutes), roles}
     zones: {
@@ -38046,6 +38070,11 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
       food: { n: 7, r: 30, hours: [11 * 60, 23 * 60], roles: { youth: 2, man: 2, aunty: 2, kid: 2, student: 2 } },
       plaza: { n: 12, r: 64, hours: [6 * 60, 23 * 60 + 30], roles: { man: 3, woman: 2, elder: 2, kid: 2, youth: 2, aunty: 1, vendor: 1 } },
       irani_cafe: { n: 3, r: 18, hours: [5 * 60, 23 * 60 + 30], roles: { man: 3, uncle: 2, old: 1, youth: 2 } },
+      // people standing about at the carts and counters (a glass of chai, the samosas, the kirana's queue, a call home)
+      chai_bandi: { n: 4, r: 12, hours: [6 * 60, 22 * 60], roles: { man: 3, uncle: 2, youth: 2, old: 1 } },
+      samosa_bandi: { n: 4, r: 12, hours: [16 * 60, 20 * 60 + 30], roles: { kid: 2, student: 2, man: 2, aunty: 1 } },
+      kirana: { n: 2, r: 12, hours: [7 * 60, 22 * 60 + 30], roles: { aunty: 3, kid: 1, man: 1, uncle: 1 } },
+      std_booth: { n: 2, r: 10, hours: [8 * 60, 22 * 60 + 30], roles: { man: 2, student: 1, aunty: 1 } },
       school: { n: 10, r: 34, hours: [7 * 60 + 30, 9 * 60], hours2: [15 * 60 + 30, 17 * 60], roles: { student: 10, aunty: 1 } },
       playground: { n: 6, r: 30, hours: [16 * 60, 18 * 60 + 45], roles: { kid: 6, student: 2 } },
       osmania_university: { n: 10, r: 80, hours: [8 * 60, 18 * 60], roles: { college: 8, man: 1 } },
@@ -38101,6 +38130,120 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || {}); } catch (e) { /* audio never breaks traffic */ } }
   function viewR() { const v = N.render.view; return Math.hypot(v.x1 - v.x0, v.y1 - v.y0) / 2; }
   function camC() { const v = N.render.view; return { x: (v.x0 + v.x1) / 2, y: (v.y0 + v.y1) / 2 }; }
+  // ---- out of sight, for spawning and despawning (top-down: the screen; 3D: the camera's ground cone)
+  // In 3D the core's R.view is a ~1080 u square round him (inView means "near the player" there) while the actors are
+  // drawn only to actorDist (~620 u): spawning outside the square put new people beyond the drawing range (walking
+  // in for seconds) and kept many alive out there unseen. In 3D things spawn inside the drawing range wherever the
+  // camera is not looking, and go once beyond it.
+  const CONE = { x: 0, y: 0, cx: 1, cy: 0, cos: 0.5, far: 620, t: -1 };
+  function cone3() {
+    const V = N.view;
+    if (!V || !V.is3D || !V.is3D()) return null;
+    const E = N.view3d && N.view3d.engine, c = E && E.camera;
+    if (!c) return null;
+    const t = (N.time && N.time.real) || 0;
+    if (CONE.t === t) return CONE;
+    const Q = (N.view3d && N.view3d.quality) || {};
+    const half = Math.atan(Math.tan(((c.fov || 60) * Math.PI) / 360) * (c.aspect || 1.78)) + 0.35;
+    CONE.x = c.position.x; CONE.y = c.position.z; CONE.cx = Math.cos(V.yaw || 0); CONE.cy = Math.sin(V.yaw || 0);
+    CONE.cos = Math.cos(Math.min(half, Math.PI * 0.95)); CONE.far = Q.actorDist || 620; CONE.t = t;
+    return CONE;
+  }
+  /** Could the player see (x, y) (margin m u)? Top-down: on screen; 3D: in the camera's cone within the drawing range. */
+  function seen(x, y, m) {
+    const C = cone3();
+    if (!C) return N.render.inView(x, y, m || 0);
+    const mm = m || 0, dx = x - C.x, dy = y - C.y, d = Math.hypot(dx, dy);
+    if (d < 18 + mm) return true;
+    if (d > C.far + mm) return false;
+    return (dx * C.cx + dy * C.cy) / d > C.cos - mm / Math.max(d, 1);
+  }
+  /** the spawn ring [r0, r1] round camC() for 'ped' | 'veh' | 'ani' */
+  function ringFor(kind) {
+    const C = cone3();
+    if (C) { const R = TUNE.ring3d[kind]; return [R[0], C.far * R[1]]; }
+    const vr = viewR(), R = kind === 'veh' ? TUNE.ringVeh : kind === 'ani' ? TUNE.ringAni : TUNE.ringPed;
+    return [vr + R[0], vr + R[1]];
+  }
+  /** far enough to go: 3D beyond the drawing range (never drawn there); top-down off screen and beyond the ring */
+  function goneFrom(e, c, kind) {
+    const C = cone3(), d = Math.hypot(e.x - c.x, e.y - c.y);
+    if (C) return d > C.far + TUNE.gone3d[kind];
+    const des = kind === 'veh' ? TUNE.despawnVeh : kind === 'ani' ? TUNE.despawnAni : TUNE.despawnPed;
+    return d > viewR() + des && !N.render.inView(e.x, e.y, kind === 'veh' ? 80 : 40);
+  }
+
+  /* ---------------------------------------------------------------- busyness */
+  // A coarse grid (TUNE.busy.G) of how busy each spot is, for people and for traffic: the district style's level
+  // (TUNE.pedStyle / vehStyle) plus a soft bump round every market, station, junction, cinema, temple, café, bus stop,
+  // school, cart... (TUNE.busy.places) and along the main roads (TUNE.busy.roads), clamped to [min, max]; a cell is
+  // worked out the first time it is asked for. The targets follow it round the camera (Koti fuller than a Banjara
+  // lane) and the spawns keep to its busier spots (a candidate is taken with the odds busy / the busiest round him).
+  const BZ = { G: 0, gw: 0, gh: 0, ped: null, veh: null, ok: null, rp: null, rv: null, spots: null, sg: null, SG: 480 };
+  const BQ = { ped: 0, veh: 0 };
+  function busyBuild() {
+    const B = TUNE.busy, G = B.G;
+    BZ.G = G; BZ.gw = Math.ceil(N.WORLD_W / G); BZ.gh = Math.ceil(N.WORLD_H / G);
+    const n = BZ.gw * BZ.gh;
+    BZ.ped = new Float32Array(n); BZ.veh = new Float32Array(n); BZ.ok = new Uint8Array(n);
+    BZ.rp = new Float32Array(n); BZ.rv = new Float32Array(n);
+    // the main roads: the strongest road through a cell
+    for (const e of RI.edges || []) {
+      const rb = B.roads[e.kind]; if (!rb) continue;
+      const A = RI.nodes[e.a], Bn = RI.nodes[e.b], L = Math.hypot(Bn.x - A.x, Bn.y - A.y), k = Math.max(1, Math.ceil(L / (G / 3)));
+      for (let i = 0; i <= k; i++) {
+        const x = A.x + (Bn.x - A.x) * i / k, y = A.y + (Bn.y - A.y) * i / k;
+        const ci = Math.floor(x / G), cj = Math.floor(y / G);
+        if (ci < 0 || cj < 0 || ci >= BZ.gw || cj >= BZ.gh) continue;
+        const idx = cj * BZ.gw + ci;
+        if (rb[0] > BZ.rp[idx]) BZ.rp[idx] = rb[0];
+        if (rb[1] > BZ.rv[idx]) BZ.rv[idx] = rb[1];
+      }
+    }
+    // the places, bucketed for the per-cell sums
+    BZ.spots = []; BZ.sg = new Map();
+    for (const id in N.places) {
+      const pl = N.places[id], w = B.places[pl.kind];
+      if (!w || pl.level || pl.roof) continue;
+      const sp = { x: pl.x, y: pl.y, p: w[0], v: w[1], s2: 2 * (w[2] / 2) * (w[2] / 2), R: w[2] * 1.5 };
+      BZ.spots.push(sp);
+      const k = Math.floor(pl.y / BZ.SG) * 4096 + Math.floor(pl.x / BZ.SG);
+      const l = BZ.sg.get(k); if (l) l.push(sp); else BZ.sg.set(k, [sp]);
+    }
+  }
+  function busyCell(ci, cj) {
+    const idx = cj * BZ.gw + ci;
+    if (BZ.ok[idx]) return idx;
+    const B = TUNE.busy, x = (ci + 0.5) * BZ.G, y = (cj + 0.5) * BZ.G, style = styleOf(districtAt(x, y));
+    let p = (TUNE.pedStyle[style] != null ? TUNE.pedStyle[style] : 0.5) + BZ.rp[idx];
+    let v = (TUNE.vehStyle[style] != null ? TUNE.vehStyle[style] : 0.6) + BZ.rv[idx];
+    const i0 = Math.floor((x - 480) / BZ.SG), i1 = Math.floor((x + 480) / BZ.SG), j0 = Math.floor((y - 480) / BZ.SG), j1 = Math.floor((y + 480) / BZ.SG);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const l = BZ.sg.get(j * 4096 + i); if (!l) continue;
+      for (const sp of l) {
+        const dx = sp.x - x, dy = sp.y - y, d2 = dx * dx + dy * dy;
+        if (d2 > sp.R * sp.R) continue;
+        const f = Math.exp(-d2 / sp.s2);
+        p += sp.p * f; v += sp.v * f;
+      }
+    }
+    BZ.ped[idx] = clamp(p, B.min, B.max); BZ.veh[idx] = clamp(v, B.min, B.max); BZ.ok[idx] = 1;
+    return idx;
+  }
+  /** how busy (x, y) is -> {ped, veh} (a shared object: read it at once) */
+  function busyAt(x, y) {
+    if (!BZ.ped) { if (!RI.built) { BQ.ped = 0.6; BQ.veh = 0.7; return BQ; } busyBuild(); }
+    const ci = clamp(Math.floor(x / BZ.G), 0, BZ.gw - 1), cj = clamp(Math.floor(y / BZ.G), 0, BZ.gh - 1);
+    const idx = busyCell(ci, cj);
+    BQ.ped = BZ.ped[idx]; BQ.veh = BZ.veh[idx];
+    return BQ;
+  }
+  /** the odds a spawn candidate at (x, y) is taken: its busyness over the busiest round the camera */
+  function keepAt(x, y, kind) {
+    const b = busyAt(x, y), B = T.busy;
+    if (!B) return 1;
+    return clamp((kind === 'veh' ? b.veh / Math.max(0.2, B.refVeh) : b.ped / Math.max(0.2, B.refPed)), 0.3, 1);
+  }
   const S = () => N.SURF;
   function walkSurfOk(x, y, allowRoad) {
     const s = N.world.surfaceAt(x, y), SU = S();
@@ -38727,7 +38870,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     }
     if (tr.i >= W.length) { // ran out (dead end): stop, then despawn when nobody sees
       ctl.throttle = 0; ctl.brake = true; tr.deadT = (tr.deadT || 0) + dt;
-      if (tr.deadT > 3 && !N.render.inView(vX, vY, 60)) despawnVehicle(v);
+      if (tr.deadT > 3 && !seen(vX, vY, 60)) despawnVehicle(v);
       return;
     }
     if (tr.i > 14) { W.splice(0, tr.i - 1); tr.i = 1; }
@@ -38841,7 +38984,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     }
     if (blocked) {
       tr.blockT += dt;
-      if (tr.blockT > 10 && !N.render.inView(vX, vY, 60)) { despawnVehicle(v); return; }
+      if (tr.blockT > 10 && !seen(vX, vY, 60)) { despawnVehicle(v); return; }
       if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
     } else { tr.blockT = Math.max(0, tr.blockT - dt * 2); if (tr.blockT === 0) tr.backed = false; }
@@ -38869,7 +39012,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
       if (moved < 2.5 && want > 15) {
         tr.stuck++;
         tr.rev = 0.8;
-        if (tr.stuck >= 3) { if (!N.render.inView(vX, vY, 60)) despawnVehicle(v); else { tr.stuck = 0; reroute(v); } }
+        if (tr.stuck >= 3) { if (!seen(vX, vY, 60)) despawnVehicle(v); else { tr.stuck = 0; reroute(v); } }
       } else tr.stuck = 0;
     }
   }
@@ -38904,7 +39047,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     const n = RI.nodes && N.world.roads.nearestNode(v.x, v.y);
     if (!n) { despawnVehicle(v); return; }
     const opts = n.links.map((l) => RI.nodes[l.to]).filter((C) => edgeAllowed(v, edgeAny(n, C)));
-    if (!opts.length) { if (!N.render.inView(v.x, v.y, 60)) despawnVehicle(v); return; }
+    if (!opts.length) { if (!seen(v.x, v.y, 60)) despawnVehicle(v); return; }
     // prefer the direction we're facing
     let best = opts[0], bd = -2;
     for (const C of opts) { const d = Math.cos(Math.atan2(C.y - n.y, C.x - n.x) - v.angle); if (d > bd) { bd = d; best = C; } }
@@ -39041,9 +39184,8 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
   /* ---------------------------------------------------------------- spawn / despawn */
   function spawnTrafficVehicle(force) {
     if (!RI.built || !N.vehicles || !N.vehicles.spawn) return null;
-    const c = camC(), vr = viewR();
-    const r0 = vr + TUNE.ringVeh[0], r1 = vr + TUNE.ringVeh[1];
-    const n = ringNode(c.x, c.y, force ? Math.max(60, vr * 0.3) : r0, r1, (q) => q.links.length > 0);
+    const c = camC(), R = ringFor('veh');
+    const n = ringNode(c.x, c.y, force && !cone3() ? Math.max(60, viewR() * 0.3) : R[0], R[1], (q) => q.links.length > 0);
     if (!n) return null;
     const link = pick(n.links);
     const B = RI.nodes[link.to], e = RI.edges[link.edge];
@@ -39058,8 +39200,8 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     const g = geom(n, B), off = laneOff(stub, e);
     const d0 = clamp(e.len * rr(0.25, 0.65), 10, e.len - 10);
     const pos = lanePt(n, g, d0, off);
-    if (!force && N.render.inView(pos.x, pos.y, 50)) return null;
-    if (force && N.render.inView(pos.x, pos.y, -40) && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 90) return null;
+    if (!force && (seen(pos.x, pos.y, 50) || rnd() > keepAt(pos.x, pos.y, 'veh'))) return null;
+    if (force && seen(pos.x, pos.y, -40) && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 90) return null;
     if (closedAt(pos.x, pos.y)) return null;
     if (!N.world.isDrivable(pos.x, pos.y) || N.world.collide(pos.x, pos.y, Ty.d / 2, 'drive').hit) return null;
     if (N.entities.query(pos.x, pos.y, Ty.w / 2 + 16, (q) => q.kind === 'vehicle' || q === N.player || q.kind === 'animal' || (q.kind === 'ped' && roadSurf(N.world.surfaceAt(q.x, q.y)))).length) return null;
@@ -39168,7 +39310,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     return v;
   }
   function dropPassenger(v) {
-    if (!N.render.inView(v.x, v.y, 40) || T.peds.length >= caps().ped) return;
+    if (!seen(v.x, v.y, 40) || T.peds.length >= caps().ped) return;
     const s = N.vehicles.exitSpot ? N.vehicles.exitSpot(v, 'walk') : null;
     if (!s) return;
     const ped = spawnPedAt(s.x, s.y, pickRole(v.tr.style), v.tr.style, { mode: 'walk' });
@@ -39419,7 +39561,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
   }
   function stuckCheck(p, dt) {
     const sp = Math.hypot(p.vx, p.vy);
-    if (sp < 4) { p.stuckT += dt; if (p.stuckT > 3) { p.stuckT = 0; if (!N.render.inView(p.x, p.y, 30)) { p.alive = false; } else { p.w = null; p.mode = 'wander'; p.zone = { x: p.x, y: p.y, r: 24 }; p.ttl = p.life + 8; } } }
+    if (sp < 4) { p.stuckT += dt; if (p.stuckT > 3) { p.stuckT = 0; if (!seen(p.x, p.y, 30)) { p.alive = false; } else { p.w = null; p.mode = 'wander'; p.zone = { x: p.x, y: p.y, r: 24 }; p.ttl = p.life + 8; } } }
     else p.stuckT = 0;
   }
   function zonePoint(z) {
@@ -39454,7 +39596,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
       const o = T.peds.find((q) => q !== p && q.zone === z && Math.hypot(q.x - p.x, q.y - p.y) < 14);
       p.faceA = o ? Math.atan2(o.y - p.y, o.x - p.x) : Math.atan2(z.y - p.y, z.x - p.x) + rr(-1, 1);
     }
-    if (p.life > p.ttl && !N.render.inView(p.x, p.y, 20)) { if (!attachNearestWalk(p)) p.ttl += 20; }
+    if (p.life > p.ttl && !seen(p.x, p.y, 20)) { if (!attachNearestWalk(p)) p.ttl += 20; }
   }
   function gotoStep(p, dt) {
     if (!p.tgt) { p.mode = p.zone ? 'wander' : 'walk'; return; }
@@ -39606,8 +39748,8 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
   /* ---------------------------------------------------------------- spawning peds */
   function spawnWalker(force) {
     if (!RI.built) return null;
-    const c = camC(), vr = viewR();
-    const n = ringNode(c.x, c.y, force ? 40 : vr + TUNE.ringPed[0], vr + TUNE.ringPed[1]);
+    const c = camC(), R = ringFor('ped');
+    const n = ringNode(c.x, c.y, force ? 40 : R[0], R[1]);
     if (!n || !n.inc.length) return null;
     const e = RI.edges[pick(n.inc)];
     if (!e || e.kind === 'path' || e.len < 20) return null;
@@ -39616,7 +39758,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     const g = geom(a, b), side = rnd() < 0.5 ? 1 : -1, off = footOff(e, side);
     const d0 = clamp(g.L * rr(0.2, 0.8), 4, g.L - 4);
     const pos = lanePt(a, g, d0, off);
-    if (!force && N.render.inView(pos.x, pos.y, 30)) return null;
+    if (!force && (seen(pos.x, pos.y, 30) || rnd() > keepAt(pos.x, pos.y, 'ped'))) return null;
     if (force && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 30) return null;
     if (!walkSurfOk(pos.x, pos.y, true) || N.world.collide(pos.x, pos.y, 3.6, 'walk').hit) return null;
     if (respectAt(pos.x, pos.y)) return null;
@@ -39689,15 +39831,17 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
   function spawnZonePed(z, force) {
     // out of view near the zone (walk in), or right in it after a teleport
     let pos = null;
-    if (force || !N.render.inView(z.x, z.y, z.r + 20)) pos = zonePoint(z);
-    if (!pos || (!force && N.render.inView(pos.x, pos.y, 20))) {
-      // enter from outside the view on the footpath network, heading for the zone
-      const a = rnd() * TAU, d = viewR() + 20;
-      const c = camC();
+    if (force || !seen(z.x, z.y, z.r + 20)) pos = zonePoint(z);
+    else if (cone3()) { pos = zonePoint(z); if (pos && seen(pos.x, pos.y, 12)) pos = null; } // (3D: any of it out of the camera's sight)
+    if (!pos || (!force && seen(pos.x, pos.y, 20))) {
+      // enter from out of sight on the footpath network, heading for the zone (3D: from a spot near it the camera
+      // does not see; top-down: from just off the screen)
+      const a = rnd() * TAU, C3 = cone3(), d = C3 ? rr(50, 110) : viewR() + 20;
+      const c = C3 ? z : camC();
       let ex = c.x + Math.cos(a) * d, ey = c.y + Math.sin(a) * d;
       if (Math.hypot(ex - z.x, ey - z.y) > 420) return null;
       const f = N.world.findFree(ex, ey, 'walk', 10);
-      if (!f || !walkSurfOk(f.x, f.y, false) || N.render.inView(f.x, f.y, 10)) return null;
+      if (!f || !walkSurfOk(f.x, f.y, false) || seen(f.x, f.y, 10)) return null;
       const role = wpick(z.spec.roles) || 'man';
       const p = spawnPedAt(f.x, f.y, role, styleOf(districtAt(z.x, z.y)), { mode: 'goto', zone: z });
       if (p) { p.tgt = zonePoint(z) || { x: z.x, y: z.y }; p.mode = 'goto'; }
@@ -39756,8 +39900,8 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
       pod.green = cyc < P ? 0 : cyc < P + G ? -1 : cyc < 2 * P + G ? 1 : -1;
       const wantCop = on && near && !pochHere && !(N.wanted && N.wanted.podiumOff && N.wanted.podiumOff(pod));
       if (wantCop && !pod.cop) {
-        if (!N.render.inView(pod.x, pod.y, 20) || T.fillT > 0) { pod.cop = new Constable(pod); N.entities.add(pod.cop); T.constables.push(pod.cop); }
-      } else if (!wantCop && pod.cop && (!N.render.inView(pod.x, pod.y, 20) || !on)) {
+        if (!seen(pod.x, pod.y, 20) || T.fillT > 0) { pod.cop = new Constable(pod); N.entities.add(pod.cop); T.constables.push(pod.cop); }
+      } else if (!wantCop && pod.cop && (!seen(pod.x, pod.y, 20) || !on)) {
         N.entities.remove(pod.cop); const i = T.constables.indexOf(pod.cop); if (i >= 0) T.constables.splice(i, 1); pod.cop = null;
       }
     }
@@ -39928,7 +40072,8 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     let sp = null;
     for (const k of ['cow', 'dog', 'goat']) if (counts[k] < want[k]) { sp = k; break; }
     if (!sp) return null;
-    const n = ringNode(c.x, c.y, force ? 50 : vr + TUNE.ringAni[0], vr + TUNE.ringAni[1]);
+    const RA = ringFor('ani'); void vr;
+    const n = ringNode(c.x, c.y, force ? 50 : RA[0], RA[1]);
     if (!n || !n.inc.length) return null;
     const e = RI.edges[pick(n.inc)];
     if (!e || e.kind === 'path' || e.len < 40) return null;
@@ -39944,7 +40089,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
       const side = rnd() < 0.5 ? 1 : -1;
       pos = lanePt(A, g, g.L * rr(0.2, 0.8), footOff(e, side) + side * 3);
     }
-    if (!force && N.render.inView(pos.x, pos.y, 40)) return null;
+    if (!force && seen(pos.x, pos.y, 40)) return null;
     if (force && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 60) return null;
     if (!N.world.isWalkable(pos.x, pos.y) || N.world.collide(pos.x, pos.y, sp === 'cow' ? 7 : 3.5, 'walk').hit) return null;
     if (respectAt(pos.x, pos.y) || N.entities.query(pos.x, pos.y, 26, (q) => q.kind === 'vehicle' || q === N.player).length) return null;
@@ -40461,7 +40606,8 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     if (m < 7 * 60) return 0.55;
     if (m >= 8 * 60 && m < 10 * 60) return 1.3;
     if (m >= 17 * 60 + 30 && m < 20 * 60) return 1.3;
-    if (m >= 20 * 60) return 0.5;
+    if (m >= 20 * 60 && m < 22 * 60 + 30) return 0.75;
+    if (m >= 22 * 60 + 30) return 0.4;
     return 1;
   }
   function pedTimeMul(m) {
@@ -40471,8 +40617,9 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     if (m < 12 * 60) return 1;
     if (m < 15 * 60 + 30) return summer() ? 0.6 : 0.85;
     if (m < 16 * 60 + 30) return 1.15;
-    if (m < 19 * 60 + 45) return 1.05;
-    if (m < 22 * 60) return 0.75;
+    if (m < 19 * 60 + 45) return 1.1;
+    if (m < 22 * 60) return 0.85;
+    if (m < 23 * 60) return 0.5;
     return 0.3;
   }
   function updateTargets() {
@@ -40483,8 +40630,17 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     if (N.places.charminar_plaza && Math.hypot(N.places.charminar_plaza.x - c.x, N.places.charminar_plaza.y - c.y) < 500 && (m >= 22 * 60 || m < 5 * 60)) vm *= 0.3;
     if (raining()) pm *= 0.6;
     const dens = clamp(+API.density || 0, 0, 2);
-    T.targets.veh = Math.round(clamp(cp.veh * (TUNE.vehStyle[style] || 0.6) * vm * dens, 0, cp.veh));
-    T.targets.ped = Math.round(clamp(cp.ped * (TUNE.pedStyle[style] || 0.5) * pm * dens, 0, cp.ped));
+    // the busyness over the populated area: the camera's spot and eight round it
+    const C3 = cone3(), rS = C3 ? C3.far * 0.55 : viewR() * 0.9;
+    let sp = 0, sv = 0, mp = 0, mv = 0;
+    for (let k = -1; k < 8; k++) {
+      const b = busyAt(k < 0 ? c.x : c.x + Math.cos((k * TAU) / 8) * rS, k < 0 ? c.y : c.y + Math.sin((k * TAU) / 8) * rS);
+      sp += b.ped; sv += b.veh; if (b.ped > mp) mp = b.ped; if (b.veh > mv) mv = b.veh;
+    }
+    T.busy = { ped: sp / 9, veh: sv / 9, refPed: mp, refVeh: mv };
+    const F = TUNE.busy.full;
+    T.targets.veh = Math.round(clamp((cp.veh * T.busy.veh * vm * dens) / F.veh, 0, cp.veh));
+    T.targets.ped = Math.round(clamp((cp.ped * T.busy.ped * pm * dens) / F.ped, 0, cp.ped));
     T.targets.ani = cp.ani;
     T.pedMul = clamp(pm, 0.2, 2);
     T.style = style;
@@ -40502,8 +40658,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
         if (v.driver === N.player) { v.wasTraffic = true; T.abandoned.push(v); }
         continue;
       }
-      const d = Math.hypot(v.x - c.x, v.y - c.y);
-      if (d > vr + TUNE.despawnVeh && !N.render.inView(v.x, v.y, 80)) { despawnVehicle(v); }
+      if (goneFrom(v, c, 'veh')) despawnVehicle(v);
     }
     for (let i = T.boats.length - 1; i >= 0; i--) {
       const v = T.boats[i];
@@ -40522,15 +40677,13 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
       const p = T.peds[i];
       if (!p.alive) { T.peds.splice(i, 1); continue; }
       if (p.spotter || p.hold) continue;
-      const d = Math.hypot(p.x - c.x, p.y - c.y);
-      if (d > vr + TUNE.despawnPed && !N.render.inView(p.x, p.y, 40)) { p.alive = false; N.entities.remove(p); T.peds.splice(i, 1); }
+      if (goneFrom(p, c, 'ped')) { p.alive = false; N.entities.remove(p); T.peds.splice(i, 1); }
     }
     for (let i = T.animals.length - 1; i >= 0; i--) {
       const a = T.animals[i];
       if (!a.alive) { T.animals.splice(i, 1); continue; }
       if (a.fedT > 0) continue;
-      const d = Math.hypot(a.x - c.x, a.y - c.y);
-      if (d > vr + TUNE.despawnAni && !N.render.inView(a.x, a.y, 40)) { N.entities.remove(a); T.animals.splice(i, 1); }
+      if (goneFrom(a, c, 'ani')) { N.entities.remove(a); T.animals.splice(i, 1); }
     }
   }
   function spawnBoats() {
@@ -40601,7 +40754,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
       if (T.peds.some((p) => p.balloons && p.zone && p.zone.place === pl)) continue;
       const z = { place: pl, x: pl.x, y: pl.y, r: Math.max(40, pl.r || 40), spec: TUNE.zones.plaza, kind: 'park' };
       const pos = zonePoint(z);
-      if (!pos || (!force && N.render.inView(pos.x, pos.y, 20))) continue;
+      if (!pos || (!force && seen(pos.x, pos.y, 20))) continue;
       const cols = []; for (let i = 0; i < 7; i++) cols.push(pick(['#e8203a', '#f2c230', '#30a050', '#2a6ad8', '#f06aa0', '#f08a24', '#8a3ad8']));
       const p = spawnPedAt(pos.x, pos.y, 'vendor', 'colony', { mode: 'wander', zone: z, balloons: cols });
       if (p) { p.look = Object.assign({}, p.look, { prop: null }); p.spd = 20; }
@@ -40668,7 +40821,11 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     get constables() { return T.constables; }, get flocks() { return T.flocks; }, get boats() { return T.boats; },
     setDensity(d) { API.density = clamp(+d || 0, 0, 2); T.targetT = 0; return API.density; },
     clear(pred) { clearAll(typeof pred === 'function' ? pred : null); },
-    stats() { return { vehicles: T.vehicles.length, peds: T.peds.length, animals: T.animals.length, flocks: T.flocks.length, boats: T.boats.length, constables: T.constables.length, targets: Object.assign({}, T.targets), zones: T.zoneList.length, ms: +T.ms.toFixed(3), sprites: sprMade }; },
+    stats() { return { vehicles: T.vehicles.length, peds: T.peds.length, animals: T.animals.length, flocks: T.flocks.length, boats: T.boats.length, constables: T.constables.length, targets: Object.assign({}, T.targets), busy: T.busy ? Object.assign({}, T.busy) : null, zones: T.zoneList.length, ms: +T.ms.toFixed(3), sprites: sprMade }; },
+    /** how busy (x, y) is for people and traffic -> {ped, veh} (district style + places + main roads, TUNE.busy) */
+    busyAt(x, y) { const b = busyAt(x, y); return { ped: b.ped, veh: b.veh }; },
+    /** out of the player's sight? (top-down: off screen; 3D: outside the camera's cone or beyond the drawing range) */
+    unseen(x, y, m) { return !seen(x, y, m); },
     /** An empty ambient auto near (x, y), released from traffic control (shops.js "AUTO!"). */
     claimAuto(x, y, r) {
       let best = null, bd = r || 260;
@@ -40733,7 +40890,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
   N.on('player:teleport', () => { T.fillT = TUNE.fillSecs; T.zoneT = 0; T.targetT = 0; });
   N.on('game:new', () => { T.fillT = TUNE.fillSecs; });
   N.on('save:loaded', () => { T.fillT = TUNE.fillSecs; });
-  N.on('world:built', () => { RI.built = false; lakePts = null; });
+  N.on('world:built', () => { RI.built = false; lakePts = null; BZ.ped = null; });
 
   N.addSystem({
     id: 'traffic', order: 40, runIn: ['play', 'dialogue', 'cutscene'],
@@ -56892,6 +57049,7 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
  *       respected unless force; free = no charge). Food is eaten, carry items go to N.player.items.
  *   N.shops.quickOrder(placeId) -> result   the ★ house item (also: hold ACTION 0.5 s at the shop)
  *   N.shops.defs {placeId: def}  kindOf(id)  resolve(id) -> canonical id  list(kind?) -> [ids]
+ *   N.shops.rebuild()  the shops again from the places (a module that adds shop places after the build: paan.js)
  *   N.shops.KINDS (catalogue), N.shops.PRICES {kind: {itemId: paise}}, N.shops.TUNE
  *   N.shops.status(id, minutes?) -> {open, reason, opens, closes, text}   isOpenNow(id)
  *   N.shops.hours(id) -> [[open, close], ...] (minutes)   hoursText(id) -> 'Open 05:00–23:30' (map cards)
@@ -59647,6 +59805,8 @@ N.TERRAIN_DATA = { step: 75, cols: 201, rows: 151, base: 466, quant: 0.25, lakeR
     open: (id, o) => openShop(id, o), close: () => closeShop(), isOpen: () => UI.open,
     get current() { return UI.open && UI.def ? { id: UI.def.id, kind: UI.def.kind, name: UI.def.name, view: UI.view ? UI.view.type : 'list' } : null; },
     buy, quickOrder, resolve, kindOf: (id) => { const d = defOf(id); return d ? d.kind : null; },
+    /** rebuild the shops from the places (a module that adds places of a shop kind after 'world:built': paan.js) */
+    rebuild: () => { try { build(); } catch (e) { N.err('shops.build', e); } },
     list: (kind) => Object.keys(defs).filter((id) => !kind || defs[id].kind === kind),
     rows: (id) => { const d = defOf(id); return d ? visibleItems(ctxOf(d), rowsOf(d)).map((it) => ({ id: it.row.id, name: plain(val(it.row.name, ctxOf(d))), price: priceOf(ctxOf(d), it.row), why: it.why ? plain(it.why) : null, house: !!it.row.house })) : []; },
     status: (id, m) => { const d = defOf(id); return d ? statusOf(d, m) : null; },
@@ -107571,6 +107731,414 @@ if (ngShine > 0.01) {
 })();
 
 </script> <!-- speed breakers, 2003: a pair at every school gate, one at each temple / mosque / church, the colonies' own humps; 2D + 3D, vehicles ride over them, traffic slows -->
+<script>/* src/paan.js */
+/* NOSTALGIA — paan.js  (N.paan: the paan shops of 2003 Hyderabad, one beside every café)
+ *
+ * No Irani café without its paan shop: a painted wooden kiosk on the footpath a few steps from the café door, its
+ * counter open to the street, the paan-wala behind it folding leaves (the betel leaves stacked under a wet red cloth,
+ * the steel tins of katha, chuna, gulkand, saunf, a small mirror, strings of foil sachets hanging in front, a bulb at
+ * night), a hand-painted board over it (SHAHI PAAN HOUSE, BANARAS PAAN BHANDAR... fictional names), red paan stains on
+ * the ground beside it, and three or four men standing about with their tea, a paan or the cricket score.
+ *
+ * Placed on 'world:built' (deterministic: U.rng('paan:v1')) next to every Irani café, bakery, Iyengar bakery, chai
+ * bandi, restaurant and food place of the map, and every coffee bar on the Banjara / Jubilee strip (hills.js): the
+ * kiosk on open ground or footpath 12-34 u from the café's own spot (never on its doorstep), its counter 6-18 u back
+ * from the nearest road's kerb and facing it, its footprint and the customers' patch in front open ground, nothing
+ * standing there (a tree, a lamp, a wall, a hoarding), at least 18 u from the next paan shop (a tight corner gets a
+ * second look 14 u further out with the counter 4.5-26 u from the kerb). Each is
+ *   - a shop (N.shops, kind 'paan_shop', place id paan_<n>): meetha paan (★ ₹4), saunf-mishri, goli soda, toffees,
+ *     bubble gum; 09:00-23:30 (nothing with tobacco: he is twelve, and the paan-wala says so);
+ *   - a 'custom' world structure (2D: the kiosk, its striped tin roof with the green leaf, the stains; 3D: the kiosk
+ *     with its counter things, the board with its painted name, the sachet strings, the bulb (a glow and a lamp at
+ *     night), the stains), solid on the collision grid (the grid cells under its turned footprint and a step round
+ *     it: never the customers' patch; put back first when they are placed again on the same grid);
+ *   - a crowd zone for traffic.js (N.traffic.TUNE.zones.paan_shop: men, youths, uncles standing about, 08:00-23:30);
+ *   - the paan-wala (N.npcs 'paanwala_1'..'paanwala_4', four looks) standing behind his counter while the shop is
+ *     open and he is near (TUNE.near; at most TUNE.keepers at once).
+ *
+ * API  N.paan = {list [{id, x, y, cx, cy, ox, oy, w, d, name, paint, anchor}], TUNE, stats() -> {shops, byAnchor,
+ *   keepers, missed (anchors without a spot), why (candidate spots turned down, by reason)}, nearest(x, y) -> shop | null,
+ *   _build()}
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  if (!N) return;
+  const U = N.util;
+  const TAU = Math.PI * 2;
+
+  const TUNE = {
+    w: 8, d: 6,                         // the kiosk: along the street, deep (2D units; 3D x N.view3d.VS in height)
+    h: 10.5, counter: 4.2, open: 9.0, sign: [11.2, 13.8], over: 1.6,
+    ring: [12, 34], step: 3, angles: 28, gap: 18, kerb: [6, 18], kerbLoose: [4.5, 26], want: { r: 18, kerb: 9 },
+    near: 320, far: 440, keepers: 4,    // the paan-walas behind their counters near him
+    crowd: { n: 3, r: 14, hours: [8 * 60, 23 * 60 + 30], roles: { man: 3, youth: 2, uncle: 2, old: 1 } },
+  };
+  const NAMES = ['SHAHI PAAN HOUSE', 'BANARAS PAAN BHANDAR', 'MUMTAZ PAAN SHOP', 'LUCKY PAAN CENTRE', 'GULSHAN PAAN',
+    'PAAN MAHAL', 'SULTAN PAAN CORNER', 'BOMBAY PAAN STALL', 'CALCUTTA MEETHA PAAN', 'MOTI PAAN', 'RAJA PAAN SHOP',
+    'NOOR PAAN DAAN', 'TAJ PAAN HOUSE', 'CHAND PAAN CENTRE', 'DILKHUSH PAAN', 'NAWAB PAAN', 'SAIBABA PAAN SHOP',
+    'GOLDEN PAAN CORNER', 'BAHAR PAAN', 'MAHARAJA PAAN'];
+  const PAINT = [
+    { body: '#2a7a4a', trim: '#f2c230', roof: '#c8402a', roof2: '#f2e6c8', bg: '#1f5a36', fg: '#ffe680' },
+    { body: '#2a5a9a', trim: '#f4f2ea', roof: '#2a8c82', roof2: '#f4f2ea', bg: '#c8202a', fg: '#fff4d8' },
+    { body: '#c8862a', trim: '#5a2a14', roof: '#7a3a8a', roof2: '#f2c230', bg: '#f2c230', fg: '#5a1a14' },
+    { body: '#3a8a8a', trim: '#f2e6c8', roof: '#d8402a', roof2: '#f2e6c8', bg: '#14141a', fg: '#7af07a' },
+    { body: '#8a2a3a', trim: '#f2c230', roof: '#2a6a3a', roof2: '#f2e6c8', bg: '#f4f2ea', fg: '#8a1a24' },
+    { body: '#5a7a2a', trim: '#f4f2ea', roof: '#2a4a8a', roof2: '#f2c230', bg: '#2a8c3a', fg: '#ffffff' },
+  ];
+  const SACHETS = ['#e8203a', '#f2c230', '#2a8cd8', '#30a050', '#f08a24', '#c0c4cc', '#8a3ad8', '#f06aa0'];
+  const STAIN = '#7a1a14', STAIN2 = '#5a120e';
+  // the places a paan shop stands beside
+  const ANCHOR_KINDS = { irani_cafe: 1, bakery: 1, iyengar_bakery: 1, chai_bandi: 1, restaurant: 1, food: 1 };
+
+  const A = { list: [], keepers: new Map(), t: 0, built: false, why: {}, miss: [], cells: [] };
+  const no = (k) => { A.why[k] = (A.why[k] || 0) + 1; };
+
+  /* ================================================================ the shop (N.shops kind 'paan_shop') */
+  const KIND = {
+    title: 'Paan shop', verb: 'Meetha paan ₹4', keeper: 'paanwala_1', icon: 'cart', hours: [['09:00', '23:30']], quick: 'meetha_paan',
+    lines: ['*Kya chahiye, beta?* Meetha paan for you, the other kind is for elders.', 'Gulkand from Lucknow, saunf from Gujarat, the leaf from Mahoba. *Ekdum* first class.',
+      "Don't spit on my wall. That red is not paint.", 'Score kitna? The radio says the second wicket fell.', '*Kal aana*, a new stock of eclairs is coming.',
+      'Cigarette? *Chal hatt!* Go home, your Amma will break my counter.'],
+    rows: [
+      { id: 'meetha_paan', name: '*Meetha paan*', sub: 'gulkand, saunf, coconut, a cherry on top', price: 400, feed: 10, house: true, line: '*Meetha paan*, extra gulkand. Open wide, *beta*. Lips red for an hour.' },
+      { id: 'saunf', name: 'Saunf-mishri twist', price: 100, feed: 2, line: 'For the breath. After the biryani, two pinches.' },
+      { id: 'goli_soda', name: 'Goli soda', sub: 'pop the marble', price: 300, feed: 8, line: '*Tak!* The marble drops. Drink slowly, it fights back.' },
+      { id: 'toffee', name: 'Toffees (two)', sub: 'the gold-wrapper kind', price: 100, feed: 3 },
+      { id: 'bubble_gum', name: 'Bubble gum', sub: 'with a tattoo inside', price: 100, feed: 1, line: 'Tattoo inside. Lick and stick, not on the school shirt.' },
+    ],
+  };
+
+  /* ================================================================ placement */
+  function front(b, side) {
+    if (side === 'N') return { x: b.x + b.w / 2, y: b.y - 4, ox: 0, oy: -1 };
+    if (side === 'S') return { x: b.x + b.w / 2, y: b.y + b.d + 4, ox: 0, oy: 1 };
+    if (side === 'W') return { x: b.x - 4, y: b.y + b.d / 2, ox: -1, oy: 0 };
+    return { x: b.x + b.w + 4, y: b.y + b.d / 2, ox: 1, oy: 0 };
+  }
+  function anchors() {
+    const raw = (N.WORLD_DATA && N.WORLD_DATA.places) || [], out = [];
+    for (const p of raw) {
+      if (!p || p.paan || p.alias || !ANCHOR_KINDS[p.kind] || !N.places[p.id]) continue;
+      if (out.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 8)) continue; // one café under two ids
+      out.push({ id: p.id, x: p.x, y: p.y, kind: p.kind, r: p.r || 0 });
+    }
+    const H = N.hills;
+    if (H && H.dressed) for (const s of H.dressed) {
+      if (s.dead || s.kind !== 'shop' || !s.shop || s.shop.k !== 'coffee' || !s.b) continue;
+      const f = front(s.b, s.side);
+      out.push({ id: 'hills:' + s.id, x: f.x, y: f.y, kind: 'coffee', hills: true });
+    }
+    return out;
+  }
+  function openSurf() {
+    const S = N.SURF, ok = new Set();
+    for (const k of ['GROUND', 'FOOTPATH', 'PLAZA', 'SAND', 'GRASS']) if (S[k] != null) ok.add(S[k]);
+    return ok;
+  }
+  function spotFor(a, rng, taken, OK, loose) {
+    const W = N.world, hw = TUNE.w / 2, hd = TUNE.d / 2, KB = loose ? TUNE.kerbLoose : TUNE.kerb;
+    const free = (x, y) => OK.has(W.surfaceAt(x, y));
+    const r1 = Math.max(TUNE.ring[1], (a.r || 0) + 16) + (loose ? 14 : 0);
+    let best = null, bs = Infinity;
+    for (let r = TUNE.ring[0]; r <= r1; r += TUNE.step) {
+      for (let k = 0; k < TUNE.angles; k++) {
+        const ang = (k + rng.next() * 0.5) / TUNE.angles * TAU;
+        const x = a.x + Math.cos(ang) * r, y = a.y + Math.sin(ang) * r;
+        if (!free(x, y)) { no('ground'); continue; }
+        if (taken.some((q) => Math.hypot(q.cx - x, q.cy - y) < TUNE.gap)) { no('gap'); continue; }
+        // facing the street: the counter to the nearest road, the kiosk a few steps back from its kerb
+        const rp = W.nearestRoadPoint(x, y);
+        if (!rp) { no('road'); continue; }
+        const rd = Math.hypot(rp.x - x, rp.y - y), kerb = rd - ((rp.road && rp.road.w) || 30) / 2;
+        if (rd < 1 || kerb < KB[0] || kerb > KB[1]) { no('road'); continue; }
+        const ox = (rp.x - x) / rd, oy = (rp.y - y) / rd, ux = -oy, uy = ox;
+        // its own footprint open ground (its back may touch a wall), the customers' patch in front of the counter too
+        let ok = true;
+        for (const u of [-hw, 0, hw]) for (const o of [-hd + 0.6, 0, hd, hd + 2.5, hd + 4.5]) if (ok && !free(x + ux * u + ox * o, y + uy * u + oy * o)) ok = false;
+        if (!ok) { no('foot'); continue; }
+        // nothing standing there (a tree, a lamp, a wall, a hoarding, a landmark: the buildings are the grid's own; a
+        // structure gone dead (an old kiosk, placed again) stays in the index but is not there)
+        let hit = false;
+        W.queryStructures(x - hw - 0.5, y - hw - 0.5, x + hw + 0.5, y + hw + 0.5, (st) => { if (!st.dead && st.t !== 'bldg' && st.t !== 'landmark' && !(st.t === 'custom' && (st.hills || st.breaker))) hit = true; });
+        if (hit) { no('built'); continue; }
+        const sc = Math.abs(r - TUNE.want.r) * 0.4 + Math.abs(kerb - TUNE.want.kerb) + rng.next() * 0.5;
+        if (sc < bs) { bs = sc; best = { cx: x, cy: y, ox, oy, rd, r }; }
+      }
+    }
+    return best;
+  }
+  // the kiosk solid on the grid like a building (collision, the walkers' grid paths, audio occlusion): the cells whose
+  // centre is under its turned footprint and a step round it (never the customers' patch, 4.5 u in front of the
+  // counter); each cell's old surface kept in A.cells to put back if they are placed again on the same grid
+  function solidify(sh) {
+    const W = N.world, grid = W.grid, GW = W.GW, GH = W.GH, C = N.CELL || 4, SOL = N.SURF.SOLID;
+    if (!grid || !GW) return;
+    const hw = TUNE.w / 2 + 1.5, hd = TUNE.d / 2 + 1.4, R = Math.hypot(hw, hd);
+    for (let j = Math.max(0, Math.floor((sh.cy - R) / C)), j1 = Math.min(GH - 1, Math.floor((sh.cy + R) / C)); j <= j1; j++) {
+      for (let i = Math.max(0, Math.floor((sh.cx - R) / C)), i1 = Math.min(GW - 1, Math.floor((sh.cx + R) / C)); i <= i1; i++) {
+        const dx = (i + 0.5) * C - sh.cx, dy = (j + 0.5) * C - sh.cy, k = j * GW + i;
+        if (Math.abs(dx * sh.ux + dy * sh.uy) > hw || Math.abs(dx * sh.ox + dy * sh.oy) > hd || grid[k] === SOL) continue;
+        A.cells.push(k, grid[k]); grid[k] = SOL;
+      }
+    }
+  }
+  function unsolidify() {
+    const grid = N.world && N.world.grid, SOL = N.SURF.SOLID;
+    if (grid) for (let n = A.cells.length - 2; n >= 0; n -= 2) if (grid[A.cells[n]] === SOL) grid[A.cells[n]] = A.cells[n + 1];
+    A.cells = [];
+  }
+  function districtId(x, y) { try { const d = N.world.districtAt(x, y); return d ? d.id : null; } catch (e) { return null; } }
+
+  function build() {
+    const W = N.world;
+    if (!W || !W.built || !W.addStructure || !W.nearestRoadPoint) return;
+    // (placed again: drop the old ones, their cells back as they were (a rebuilt world has a fresh grid: none kept))
+    for (const s of A.list) if (s.st) s.st.dead = true;
+    unsolidify();
+    A.list = []; A.why = {}; A.miss = [];
+    for (const k of Array.from(A.keepers.keys())) dropKeeper(k);
+    const raw = N.WORLD_DATA && N.WORLD_DATA.places;
+    if (raw) for (let i = raw.length - 1; i >= 0; i--) if (raw[i] && raw[i].paan) raw.splice(i, 1);
+    for (const id of Object.keys(N.places)) if (N.places[id] && N.places[id].kind === 'paan_shop') delete N.places[id];
+    const rng = U.rng('paan:v1'), OK = openSurf();
+    const list = anchors();
+    for (const a of list) {
+      // (a tight corner: a second look further out, the counter nearer the kerb or further back)
+      const sp = spotFor(a, rng, A.list, OK) || spotFor(a, rng, A.list, OK, true);
+      if (!sp) { A.miss.push(a.id); continue; }
+      const n = A.list.length, id = 'paan_' + (n + 1);
+      const shop = {
+        id, n, cx: sp.cx, cy: sp.cy, ox: sp.ox, oy: sp.oy, ux: -sp.oy, uy: sp.ox, w: TUNE.w, d: TUNE.d,
+        name: NAMES[(rng.next() * NAMES.length) | 0], paint: PAINT[(rng.next() * PAINT.length) | 0], anchor: a.id,
+        keeper: 1 + ((rng.next() * 4) | 0), stains: [], sachets: [], seed: (rng.next() * 1e9) | 0,
+      };
+      // where the customer stands (the shop's spot), the stains beside the kiosk (the side away from the café)
+      shop.x = sp.cx + sp.ox * (TUNE.d / 2 + 4.5); shop.y = sp.cy + sp.oy * (TUNE.d / 2 + 4.5);
+      const side = ((sp.cx - a.x) * shop.ux + (sp.cy - a.y) * shop.uy) >= 0 ? 1 : -1;
+      for (let k = 0; k < 4; k++) {
+        const along = side * (TUNE.w / 2 + 1.2 + rng.next() * 2.4), out = -TUNE.d / 2 + rng.next() * (TUNE.d + 2);
+        shop.stains.push({ x: sp.cx + shop.ux * along + sp.ox * out, y: sp.cy + shop.uy * along + sp.oy * out, r: 0.6 + rng.next() * 0.9, c: rng.next() < 0.5 ? STAIN : STAIN2 });
+      }
+      for (let k = 0; k < 9; k++) shop.sachets.push(SACHETS[(rng.next() * SACHETS.length) | 0]);
+      A.list.push(shop);
+      const R = 11;
+      shop.st = W.addStructure({ t: 'custom', paan: true, terrSelf: true, x0: sp.cx - R, y0: sp.cy - R, x1: sp.cx + R, y1: sp.cy + R, cx: sp.cx, cy: sp.cy, shop, draw: draw2D, build3d });
+      solidify(shop);
+      const place = { id, name: titleCase(shop.name), kind: 'paan_shop', x: shop.x, y: shop.y, r: 12, district: districtId(shop.x, shop.y), paan: true };
+      if (raw) raw.push(place);
+      N.places[id] = { id, name: place.name, x: place.x, y: place.y, r: place.r, district: place.district, kind: 'paan_shop' };
+    }
+    // the shop kind, the crowd zone, the shop list again
+    try { if (N.shops && N.shops.KINDS && !N.shops.KINDS.paan_shop) N.shops.KINDS.paan_shop = KIND; } catch (e) { N.err('paan.kind', e); }
+    try { if (N.traffic && N.traffic.TUNE && N.traffic.TUNE.zones && !N.traffic.TUNE.zones.paan_shop) N.traffic.TUNE.zones.paan_shop = TUNE.crowd; } catch (e) { N.err('paan.zone', e); }
+    try { if (N.shops && N.shops.rebuild) N.shops.rebuild(); } catch (e) { N.err('paan.shops', e); }
+    A.built = true;
+    N.emit('paan:built', { count: A.list.length });
+  }
+  const titleCase = (s) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+
+  /* ================================================================ 2D */
+  // the corners of a box in the kiosk's frame: centre (x, y), a half-length along the street, a half-depth out to it
+  function corners(sh, x, y, hu, ho) {
+    const ux = sh.ux, uy = sh.uy, ox = sh.ox, oy = sh.oy;
+    return [[x - ux * hu - ox * ho, y - uy * hu - oy * ho], [x + ux * hu - ox * ho, y + uy * hu - oy * ho], [x + ux * hu + ox * ho, y + uy * hu + oy * ho], [x - ux * hu + ox * ho, y - uy * hu + oy * ho]];
+  }
+  function draw2D(ctx, s) {
+    if (s.dead) return;
+    const D = N.draw, sh = s.shop, P = sh.paint, night = (N.render && N.render.night) || 0;
+    const cx = sh.cx, cy = sh.cy, hw = sh.w / 2, hd = sh.d / 2;
+    for (const st of sh.stains) D.disc(st.x, st.y, st.r, 0.02, st.c);
+    D.poly(corners(sh, cx, cy, hw + 0.3, hd + 0.3), 0, 0.6, { wall: '#8a857a', roof: '#9a958a' });
+    // the body to the counter, the back and side walls to the roof, the fascia over the opening
+    D.poly(corners(sh, cx, cy, hw, hd), 0.6, TUNE.counter, { wall: P.body, roof: '#6a4a2a' });
+    D.poly(corners(sh, cx - sh.ox * (hd - 0.4), cy - sh.oy * (hd - 0.4), hw, 0.4), TUNE.counter, TUNE.h, { wall: P.body, roof: P.body });
+    for (const k of [-1, 1]) D.poly(corners(sh, cx + sh.ux * k * (hw - 0.3), cy + sh.uy * k * (hw - 0.3), 0.3, hd), TUNE.counter, TUNE.h, { wall: P.body, roof: P.body });
+    // the striped tin roof, out over the counter, the green betel leaf painted on it, the board along the front
+    const rx = cx + sh.ox * TUNE.over / 2, ry = cy + sh.oy * TUNE.over / 2;
+    D.poly(corners(sh, rx, ry, hw + 0.6, hd + TUNE.over / 2 + 0.3), TUNE.h, TUNE.h + 0.5, { wall: P.roof, roof: P.roof });
+    D.plane(TUNE.h + 0.5, (g) => {
+      g.save();
+      g.translate(rx, ry); g.rotate(Math.atan2(sh.uy, sh.ux));
+      g.fillStyle = P.roof2;
+      for (let k = -2; k <= 2; k += 2) g.fillRect(k * 1.6 - 0.6, -(hd + TUNE.over / 2 + 0.3), 1.2, (hd + TUNE.over / 2 + 0.3) * 2);
+      // the leaf: a heart, its tip to the street
+      g.fillStyle = '#2f8a2a'; g.beginPath();
+      g.moveTo(0, 2.4); g.bezierCurveTo(-3.2, 0.4, -2.4, -2.6, 0, -1.2); g.bezierCurveTo(2.4, -2.6, 3.2, 0.4, 0, 2.4); g.fill();
+      g.strokeStyle = '#bfe08a'; g.lineWidth = 0.25; g.beginPath(); g.moveTo(0, 2.2); g.lineTo(0, -1.0); g.stroke();
+      g.restore();
+    });
+    const bx = cx + sh.ox * (hd + 0.7), by = cy + sh.oy * (hd + 0.7);
+    D.poly(corners(sh, bx, by, hw + 0.3, 0.25), TUNE.sign[0], TUNE.sign[1], { wall: P.bg, roof: P.trim });
+    if (night > 0.15) D.disc(cx + sh.ox * (hd - 0.2), cy + sh.oy * (hd - 0.2), 1.6 + night, TUNE.open, 'rgba(255,220,140,' + (0.35 * night).toFixed(3) + ')');
+    void ctx;
+  }
+
+  /* ================================================================ 3D */
+  const TEX = new Map();
+  function signMat(THREE, sh) {
+    const key = sh.name + '|' + sh.paint.bg;
+    let m = TEX.get(key);
+    if (m) return m;
+    const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+    const g = c.getContext('2d'), P = sh.paint;
+    g.fillStyle = P.bg; g.fillRect(0, 0, 512, 128);
+    g.strokeStyle = P.trim; g.lineWidth = 8; g.strokeRect(6, 6, 500, 116);
+    // the leaf at the left, the name painted across
+    g.fillStyle = '#2f8a2a'; g.beginPath(); g.moveTo(58, 104); g.bezierCurveTo(14, 70, 24, 22, 58, 42); g.bezierCurveTo(92, 22, 102, 70, 58, 104); g.fill();
+    g.strokeStyle = '#bfe08a'; g.lineWidth = 3; g.beginPath(); g.moveTo(58, 100); g.lineTo(58, 46); g.stroke();
+    g.fillStyle = P.fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+    let fs = 60; g.font = "800 " + fs + "px 'Baloo 2', 'Arial Black', sans-serif";
+    while (g.measureText(sh.name).width > 380 && fs > 26) { fs -= 2; g.font = "800 " + fs + "px 'Baloo 2', 'Arial Black', sans-serif"; }
+    g.fillText(sh.name, 300, 70);
+    const tex = new THREE.CanvasTexture(c);
+    if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 4;
+    m = new THREE.MeshLambertMaterial({ map: tex });
+    TEX.set(key, m);
+    return m;
+  }
+  function build3d(THREE, s, H, gb, J) {
+    const sh = s.shop;
+    if (s.dead || !sh) return null;
+    const VS = H.VS || 1.5, ox = J.ox, oz = J.oz, P = sh.paint;
+    const T = (x, y) => (H.terrainAt ? H.terrainAt(x, y) || 0 : 0);
+    const hw = sh.w / 2, hd = sh.d / 2;
+    // the kiosk sits on the low side of its footprint (the plinth takes up the slope)
+    let base = Infinity;
+    for (const c of corners(sh, sh.cx, sh.cy, hw + 0.3, hd + 0.3)) base = Math.min(base, T(c[0], c[1]));
+    if (!isFinite(base)) base = 0;
+    const ang = Math.atan2(sh.uy, sh.ux);
+    const at = (u, o) => [sh.cx + sh.ux * u + sh.ox * o - ox, sh.cy + sh.uy * u + sh.oy * o - oz];
+    const Y = (h) => base + h * VS;
+    const box = (u, o, lu, lo, h0, h1, col) => { const p = at(u, o); gb.color(col).obox(p[0], p[1], lu, lo, Y(h0), Y(h1), ang); };
+    gb.plain();
+    box(0, 0, sh.w + 0.6, sh.d + 0.6, -0.4, 0.6, '#8a857a');                 // the plinth
+    box(0, 0, sh.w, sh.d, 0.6, TUNE.counter, P.body);                        // the body up to the counter
+    box(0, -(hd - 0.3), sh.w, 0.6, TUNE.counter, TUNE.h, P.body);             // the back wall
+    for (const k of [-1, 1]) box(k * (hw - 0.3), 0, 0.6, sh.d, TUNE.counter, TUNE.h, P.body); // the side walls
+    box(0, hd - 0.3, sh.w, 0.6, TUNE.open, TUNE.h, P.trim);                   // the fascia over the opening
+    box(0, hd + 0.05, sh.w + 0.2, 0.2, 1.4, 1.8, P.trim);                     // a painted band on the front
+    // inside: the shelves on the back wall with their jars, the mirror on a side wall
+    for (const h of [5.4, 7.2]) {
+      box(0, -(hd - 1.0), sh.w - 1.4, 1.0, h, h + 0.25, '#7a5a3a');
+      for (let k = 0; k < 6; k++) box(-hw + 1.3 + k * (sh.w - 2.6) / 5, -(hd - 1.0), 0.6, 0.6, h + 0.25, h + 1.1, SACHETS[(sh.seed + k * 3 + h) % SACHETS.length | 0]);
+    }
+    box(hw - 0.65, -0.4, 0.08, 1.6, 6.0, 8.2, '#bcd8e4');
+    // the counter: the top sticking out, the leaves under the red cloth, the steel tins, the brass lota
+    box(0, hd - 0.4, sh.w - 0.2, 1.6, TUNE.counter, TUNE.counter + 0.3, '#c8a878');
+    box(-1.6, hd - 0.6, 2.4, 1.2, TUNE.counter + 0.3, TUNE.counter + 0.6, '#3f8a2a');
+    box(-1.6, hd - 0.6, 2.2, 1.0, TUNE.counter + 0.6, TUNE.counter + 0.75, '#b8202a');
+    for (let k = 0; k < 4; k++) { const p = at(0.6 + k * 0.85, hd - 0.7); gb.color('#c8ccd2').cyl(p[0], Y(TUNE.counter + 0.3), p[1], 0.32, 0.32, 0.55 * VS, 8); }
+    { const p = at(hw - 1.0, hd - 0.7); gb.color('#c8962a').cyl(p[0], Y(TUNE.counter + 0.3), p[1], 0.35, 0.45, 0.7 * VS, 8); }
+    // the striped tin roof out over the counter, the board on top along the front
+    box(0, TUNE.over / 2, sh.w + 1.2, sh.d + TUNE.over + 0.6, TUNE.h, TUNE.h + 0.45, P.roof);
+    for (let k = -2; k <= 2; k += 2) box(k * 1.6, TUNE.over / 2, 1.2, sh.d + TUNE.over + 0.62, TUNE.h + 0.02, TUNE.h + 0.47, P.roof2);
+    box(0, hd + 0.7, sh.w + 0.6, 0.45, TUNE.sign[0], TUNE.sign[1], P.bg);
+    box(0, hd + 0.7, sh.w + 0.8, 0.5, TUNE.sign[1], TUNE.sign[1] + 0.25, P.trim);
+    // the strings of foil sachets hanging in the opening, at both ends
+    for (let k = 0; k < sh.sachets.length; k++) {
+      const end = k < 5 ? -1 : 1, i = k < 5 ? k : k - 5;
+      const u = end * (hw - 0.8 - i * 0.55);
+      box(u, hd + 0.15, 0.42, 0.08, TUNE.open - 3.2 + (i % 2) * 0.4, TUNE.open - 0.1, sh.sachets[k]);
+    }
+    // the stains on the ground beside it (paan, spat)
+    for (const st of sh.stains) {
+      const x = st.x - ox, z = st.y - oz, y = T(st.x, st.y) + 0.06, r = st.r;
+      gb.color(st.c).quad(x - r, y, z - r * 0.7, x - r, y, z + r * 0.7, x + r, y, z + r, x + r, y, z - r);
+    }
+    // the bulb under the roof's edge: a glow and a lamp at night
+    { const p = at(0, hd + 0.2), h = Y(TUNE.open - 0.4); gb.color('#fff4cc').sphere(p[0], h, p[1], 0.45, 0.55, 0.45, 8, 5); J.glows.push([p[0], h, p[1], 1.0, 0.86, 0.55, 0.9]); J.lamps.push([p[0] + ox, h, p[1] + oz, 0xffd890]); }
+    // the painted name on the board's face
+    try {
+      const geo = new THREE.PlaneGeometry(sh.w + 0.2, (TUNE.sign[1] - TUNE.sign[0]) * VS - 0.3);
+      const mesh = new THREE.Mesh(geo, signMat(THREE, sh));
+      const p = at(0, hd + 0.96);
+      mesh.position.set(p[0] + ox, Y((TUNE.sign[0] + TUNE.sign[1]) / 2), p[1] + oz); // (world: the core makes a returned object chunk-local)
+      mesh.rotation.y = Math.atan2(sh.ox, sh.oy);
+      mesh.name = 'paan-sign';
+      mesh.userData.noShadow = true;
+      return mesh;
+    } catch (e) { N.err('paan.sign', e); return null; }
+  }
+  if (N.view3d && N.view3d.registerStructure && !N.ameerpet && !N.hills && !N.breakers) {
+    N.view3d.registerStructure('custom', (THREE, s, H, gb, J) => (typeof s.build3d === 'function' ? s.build3d(THREE, s, H, gb, J) : null));
+  }
+
+  /* ================================================================ the paan-walas */
+  const KEEPER_LOOKS = [
+    { look: { kind: 'man', skin: '#a0683f', hair: '#1a1412', shirt: '#f4f2ea', pants: '#f4f2ea', hat: 'skull' }, portrait: { kind: 'man', skin: '#a0683f', cap: 'skull', moustache: 'thick', shirt: '#f4f2ea', collar: 'band' } },
+    { look: { kind: 'man', skin: '#8d5a3b', hair: '#1a1412', shirt: '#e8dcc0', pants: '#4a4a4a', hat: 'gandhi' }, portrait: { kind: 'man', skin: '#8d5a3b', cap: 'gandhi', moustache: 'huge', shirt: '#e8dcc0', collar: 'v' } },
+    { look: { kind: 'man', skin: '#c68b5e', hair: '#d8d4c8', shirt: '#f4f2ea', pants: '#f4f2ea', beard: '#c8642a' }, portrait: { kind: 'man', age: 'old', skin: '#c68b5e', hair: '#e8e4dc', beard: 'trim', beardColor: '#c8642a', shirt: '#f4f2ea', collar: 'band' } },
+    { look: { kind: 'man', skin: '#9a6040', hair: '#1a1412', shirt: '#2a6a5a', pants: '#3a3a4a' }, portrait: { kind: 'man', skin: '#9a6040', moustache: 'thin', shirt: '#2a6a5a', collar: 'v' } },
+  ];
+  function defineKeepers() {
+    const P = N.npcs;
+    if (!P || !P.define || A.defined) return;
+    KEEPER_LOOKS.forEach((k, i) => { try { P.define('paanwala_' + (i + 1), { name: 'Paan-wala', color: '#2f8a2a', voice: 0.92 + i * 0.04, look: k.look, portrait: k.portrait }); } catch (e) { N.err('paan.define', e); } });
+    A.defined = true;
+  }
+  function dropKeeper(id) {
+    const key = A.keepers.get(id);
+    A.keepers.delete(id);
+    try { if (key && N.npcs && N.npcs.despawn) N.npcs.despawn(key); } catch (e) { N.err('paan.keeper', e); }
+  }
+  function openNow(id) {
+    try { if (N.shops && N.shops.status) return !!N.shops.status(id).open; } catch (e) { /* ignore */ }
+    const m = N.clock ? N.clock.minutes : 720;
+    return m >= 9 * 60 && m < 23 * 60 + 30;
+  }
+  function keepers() {
+    const p = N.player;
+    if (!p || !N.npcs || !N.npcs.spawn) return;
+    defineKeepers();
+    for (const id of Array.from(A.keepers.keys())) {
+      const sh = A.list.find((q) => q.id === id);
+      if (!sh || Math.hypot(sh.cx - p.x, sh.cy - p.y) > TUNE.far || !openNow(id)) dropKeeper(id);
+    }
+    if (A.keepers.size >= TUNE.keepers) return;
+    const near = A.list.filter((sh) => !A.keepers.has(sh.id) && Math.hypot(sh.cx - p.x, sh.cy - p.y) < TUNE.near && openNow(sh.id))
+      .sort((a, b) => Math.hypot(a.cx - p.x, a.cy - p.y) - Math.hypot(b.cx - p.x, b.cy - p.y));
+    for (const sh of near) {
+      if (A.keepers.size >= TUNE.keepers) break;
+      const key = 'paan:' + sh.id;
+      try {
+        // behind the counter, facing the street (he never leaves it: no world collision for him inside the kiosk)
+        const a = N.npcs.spawn('paanwala_' + sh.keeper, { x: sh.cx - sh.ox * 0.6, y: sh.cy - sh.oy * 0.6 }, { key, idle: 'work', talk: false, free: false, angle: Math.atan2(sh.oy, sh.ox), owner: 'paan' });
+        if (a) { a.noWorld = true; a.paan = sh.id; A.keepers.set(sh.id, key); }
+      } catch (e) { N.err('paan.keeper', e); }
+    }
+  }
+
+  /* ================================================================ system, API */
+  N.addSystem({
+    id: 'paan', order: 62, runIn: ['play'],
+    update(dt) {
+      if (!A.built) return;
+      A.t -= dt;
+      if (A.t > 0) return;
+      A.t = 0.5;
+      keepers();
+    },
+    reset() { for (const k of Array.from(A.keepers.keys())) dropKeeper(k); },
+  });
+  N.on('world:built', () => { A.cells = []; try { build(); } catch (e) { N.err('paan.build', e); } });
+  N.on('game:new', () => { for (const k of Array.from(A.keepers.keys())) dropKeeper(k); });
+
+  N.paan = {
+    get list() { return A.list; },
+    TUNE, KIND,
+    stats() {
+      const byAnchor = {};
+      for (const sh of A.list) { const k = sh.anchor.indexOf('hills:') === 0 ? 'coffee' : (N.places[sh.anchor] && N.places[sh.anchor].kind) || '?'; byAnchor[k] = (byAnchor[k] || 0) + 1; }
+      return { shops: A.list.length, byAnchor, keepers: A.keepers.size, missed: A.miss.slice(), why: Object.assign({}, A.why) };
+    },
+    nearest(x, y) { let b = null, bd = Infinity; for (const sh of A.list) { const d = Math.hypot(sh.cx - x, sh.cy - y); if (d < bd) { bd = d; b = sh; } } return b; },
+    _build: build,
+  };
+})();
+
+</script> <!-- paan shops, 2003: a painted kiosk beside every Irani cafe, bakery, chai bandi and coffee bar (meetha paan, goli soda), the paan-wala behind his counter, men standing about; 2D + 3D -->
 <script>/* src/diwali.js */
 /* NOSTALGIA — diwali.js  (owner: Diwali developer) — Deepavali week 2003 in both views.
  *
