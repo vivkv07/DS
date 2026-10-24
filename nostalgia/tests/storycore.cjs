@@ -455,13 +455,16 @@ async function testHud(browser) {
     await page.waitForFunction(() => document.querySelector('.hud-district').classList.contains('show') && document.querySelector('.hud-district .d-name').textContent === 'Basheerbagh', null, { timeout: 20000, polling: 100 }).catch(() => {});
     const after = await page.evaluate(() => ({ dist: document.querySelector('.hud-district').classList.contains('show'), name: document.querySelector('.hud-district .d-name').textContent }));
     check(after.dist && after.name === 'Basheerbagh', V.name + ': the district card shows after the banner', after);
-    // sound captions (a setting, off by default: switch it on)
+    // sound captions (a setting, off by default: switch it on). The street is emptied first: only the newest three
+    // captions show, and a passing bus's pothole "[dhadak!]" in those 300 ms would push the whistle out
     await page.evaluate(() => { if (N.settings && typeof N.settings.set === 'function') N.settings.set('captions', true); else (N.settings = N.settings || {}).captions = true; });
+    await page.evaluate(() => { if (N.traffic) { N.traffic.enabled = false; N.traffic.clear(); } document.querySelectorAll('.hud-cap').forEach((e) => e.remove()); });
     await page.evaluate(() => { const p = N.player; N.audio.sfx('whistle', { x: p.x + 200, y: p.y - 120 }); N.audio.sfx('chappal_whoosh', { x: p.x - 90, y: p.y + 30 }); N.hud.caption('● REC', { kind: 'rec' }); });
     await sleep(300);
     const caps = await page.evaluate(() => Array.from(document.querySelectorAll('.hud-cap.show')).map((e) => e.textContent));
     await shot(page, 'hud_captions');
     check(caps.some((c) => /^\[whistle [↗→]\]$/.test(c)) && caps.some((c) => /^\[chappal whoosh [←↙]\]$/.test(c)) && caps.indexOf('[● REC]') >= 0, V.name + ': sound captions with direction arrows', caps);
+    await page.evaluate(() => { if (N.traffic) N.traffic.enabled = true; });
     // J-card prompt card
     await jcardMission(page);
     await page.evaluate(() => { N.walkman.stop(); N.hud.timer(null); const g = N.places.giver_himayatnagar; N.player.teleport(g.x, g.y); });
