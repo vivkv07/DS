@@ -789,7 +789,7 @@ body "Baloo 2", OSD/mono "VT323"; each with fallbacks
 (`'Yatra One', 'Baloo 2', system-ui, sans-serif` etc.).
 - HUD: top-left VHS OSD strip (`▶ PLAY  TUE 14 JAN 2003  17:42`) + district name;
   top-right money, energy bar, **Chappal Meter** (5 slipper icons drawn in CSS/SVG);
-  top-center objective; bottom-left minimap (canvas, rotates with heading optional, blips);
+  top-center objective; bottom-left minimap (canvas; north up, or turning with the 3D camera; blips);
   toasts; big centre banners ("MISSION PASSED — Respect +", "PAKDA GAYA!", "THAK GAYA!").
 - `N.hud.objective(text|null)`, `N.hud.toast(text, ms)`, `N.hud.banner(title, sub, ms)`,
   `N.hud.blip(id, {x, y} | entity, {color, icon, label, pulse, route})`, `N.hud.unblip(id)`,
@@ -825,6 +825,19 @@ Implementation notes (hud.js / dialogue.js, binding):
   off the minimap instead of an edge arrow)}`. `N.hud.blips` (Map), `blipPos(b)`, `route()`
   (current route polyline) and `mapImage()` (the styled minimap base image) are there for
   the full map.
+- Minimap orientation (Settings > Screen > Minimap, `N.hud.minimap.mode` / `setMode()`, localStorage
+  'nostalgia.minimap.v1'): 'auto' (default) turns the map with the camera in the 3D views (the camera's
+  heading up, like the road on screen) and keeps north up in the top-down view; 'north' always north up;
+  'turn' always heading up (top-down: his facing / the vehicle's). The N badge rides the edge where north
+  lies. Moving, the map's centre runs up to 0.3 x its radius ahead along the motion. The route is the
+  walker's on foot (every link either way, footpaths), roads only on a cycle (either way), and the roads'
+  own rules in anything with an engine (one-ways kept and no footpaths where the map has them, lanes x1.35
+  / streets x1.1), starting from the junction the vehicle is heading for (a walker's route only if no legal
+  one exists);
+  `route()` (so the full map's route too) follows it. A chip along the minimap's bottom edge shows the next
+  turn (a junction where the route bends > ~35 degrees, within ~1.4 km: arrow + distance, the road's name
+  on a big minimap) or "Turn round" when a vehicle faces away from its route. `N.hud.minimap.state()` ->
+  `{mode, rot, look, radius, route: 'walk'|'cycle'|'drive', turn}` (tests/minimap.cjs).
 - Blip `size` is clamped to `N.hud.BLIP_MAX` (2.2); colours go through `N.hud.blipColor(col)` (Settings
   "Colour-blind blips": deutan / protan / tritan palettes, also used by the full map and the route line).
   `N.hud.fmtMoney(paise)` is the tin's format (₹ 12.50 below ₹1,000, ₹ 9,99,999 above). Speech bubbles

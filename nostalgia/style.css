@@ -709,6 +709,8 @@ body.touch-on .hud-stats { top: calc(56px + var(--safe-t)); right: calc(10px + v
   border-radius: 0 0 4px 4px;
   padding: 1px 5px 0;
 }
+/* a turned (heading-up) minimap: the N badge rides the edge where north lies */
+.hud-minimap .mm-n.turned { transform: translate(-50%, -50%); border-radius: 50%; padding: 2px 5px 1px; font-size: 13px; box-shadow: 0 0 0 2px var(--auto-black); }
 
 /* ---- ask card (retry mission etc.) */
 .hud-ask {
