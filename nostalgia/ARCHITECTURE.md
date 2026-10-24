@@ -158,7 +158,8 @@ nostalgia/
   src/paan.js       (after breakers.js) paan shops, 2003: on 'world:built' (deterministic) a painted kiosk beside
                     every Irani café, bakery, chai bandi, restaurant, food place and Banjara / Jubilee coffee bar
                     (hills.js): open ground 12-34 u from the café, its counter facing the nearest road 6-18 u back
-                    from the kerb (a looser second look for tight corners), solid on the grid (its turned footprint).
+                    from the kerb (a looser second look for tight corners), clear of the places' own spots (36 u from a mission
+                    giver or home, 24 from stairs / terraces, 14 from any other), solid on the grid (its turned footprint).
                     Each is an N.shops shop (kind 'paan_shop', places paan_<n> added to N.places and the world
                     data's places, then N.shops.rebuild(): meetha paan ★ ₹4, saunf, goli soda, toffees, gum; no
                     tobacco; 09:00-23:30), a traffic.js crowd zone (zones.paan_shop: men standing about), a

@@ -10,7 +10,8 @@
  * bandi, restaurant and food place of the map, and every coffee bar on the Banjara / Jubilee strip (hills.js): the
  * kiosk on open ground or footpath 12-34 u from the café's own spot (never on its doorstep), its counter 6-18 u back
  * from the nearest road's kerb and facing it, its footprint and the customers' patch in front open ground, nothing
- * standing there (a tree, a lamp, a wall, a hoarding), at least 18 u from the next paan shop (a tight corner gets a
+ * standing there (a tree, a lamp, a wall, a hoarding), clear of the places' own spots (36 u from a mission giver or
+ * home, 24 from stairs and terraces, 14 from any other), at least 18 u from the next paan shop (a tight corner gets a
  * second look 14 u further out with the counter 4.5-26 u from the kerb). Each is
  *   - a shop (N.shops, kind 'paan_shop', place id paan_<n>): meetha paan (★ ₹4), saunf-mishri, goli soda, toffees,
  *     bubble gum; 09:00-23:30 (nothing with tobacco: he is twelve, and the paan-wala says so);
@@ -37,6 +38,9 @@
     w: 8, d: 6,                         // the kiosk: along the street, deep (2D units; 3D x N.view3d.VS in height)
     h: 10.5, counter: 4.2, open: 9.0, sign: [11.2, 13.8], over: 1.6,
     ring: [12, 34], step: 3, angles: 28, gap: 18, kerb: [6, 18], kerbLoose: [4.5, 26], want: { r: 18, kerb: 9 },
+    // clear of the places' own spots (u from the kiosk's centre): a mission giver / home is walked up to, stairs and
+    // terraces are climbed, any other place's spot keeps a step round it (the kiosk's own café excepted)
+    keep: { giver: 36, home: 36, stairs: 24, terrace: 24, place: 14 },
     near: 320, far: 440, keepers: 4,    // the paan-walas behind their counters near him
     crowd: { n: 3, r: 14, hours: [8 * 60, 23 * 60 + 30], roles: { man: 3, youth: 2, uncle: 2, old: 1 } },
   };
@@ -106,6 +110,14 @@
     const W = N.world, hw = TUNE.w / 2, hd = TUNE.d / 2, KB = loose ? TUNE.kerbLoose : TUNE.kerb;
     const free = (x, y) => OK.has(W.surfaceAt(x, y));
     const r1 = Math.max(TUNE.ring[1], (a.r || 0) + 16) + (loose ? 14 : 0);
+    // the places' spots to keep clear of round this anchor (not the anchor itself, nor the paan shops)
+    const clear = [];
+    for (const id in N.places) {
+      const p = N.places[id];
+      if (!p || id === a.id || p.kind === 'paan_shop') continue;
+      const r = TUNE.keep[p.kind] || (/^giver_/.test(id) ? TUNE.keep.giver : TUNE.keep.place);
+      if (Math.abs(p.x - a.x) < r1 + r && Math.abs(p.y - a.y) < r1 + r) clear.push({ x: p.x, y: p.y, r });
+    }
     let best = null, bs = Infinity;
     for (let r = TUNE.ring[0]; r <= r1; r += TUNE.step) {
       for (let k = 0; k < TUNE.angles; k++) {
@@ -113,6 +125,7 @@
         const x = a.x + Math.cos(ang) * r, y = a.y + Math.sin(ang) * r;
         if (!free(x, y)) { no('ground'); continue; }
         if (taken.some((q) => Math.hypot(q.cx - x, q.cy - y) < TUNE.gap)) { no('gap'); continue; }
+        if (clear.some((c) => Math.hypot(c.x - x, c.y - y) < c.r)) { no('place'); continue; }
         // facing the street: the counter to the nearest road, the kiosk a few steps back from its kerb
         const rp = W.nearestRoadPoint(x, y);
         if (!rp) { no('road'); continue; }

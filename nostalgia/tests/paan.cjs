@@ -2,7 +2,8 @@
  * Headless Chromium + SwiftShader WebGL (three.js served from vendor/ like tests/breakers.cjs).
  *  1. placement: a paan shop beside (nearly) every Irani café, bakery, chai bandi, restaurant, food place and
  *     Banjara / Jubilee coffee bar; each kiosk on the collision grid (solid), its customer spot open ground (not the
- *     road), its counter facing the nearest road, 12-60 u from its café, none within 18 u of another; deterministic
+ *     road), its counter facing the nearest road, 12-60 u from its café, none within 18 u of another, clear of the
+ *     places' own spots (a mission giver 36 u: one stood on the Himayatnagar giver's spot); deterministic
  *  2. the shop: N.shops 'paan_shop' at every one (the card's rows: meetha paan ★ ₹4, goli soda...), buying a meetha
  *     paan takes ₹4 and feeds him; closed at 03:00, open at noon; nothing with tobacco on the card
  *  3. life round it: the crowd zone (men standing about) fills near one; the paan-wala stands behind the counter while
@@ -67,14 +68,22 @@ async function main() {
       const close = list.some((q) => q !== sh && Math.hypot(q.cx - sh.cx, q.cy - sh.cy) < 17.9);
       if (!solid || spot === S.ROAD || spot === S.SOLID || toRoad < 0.99 || dA < 11 || dA > 62 || close) bad.push({ id: sh.id, solid, spot, toRoad: +toRoad.toFixed(2), dA: Math.round(dA), close });
     }
+    // clear of the places' own spots: givers / home 36 u, stairs / terraces 24, any other 14 (its own café excepted)
+    const K = P.TUNE.keep, clearBad = [];
+    for (const sh of list) for (const id in N.places) {
+      const p = N.places[id]; if (!p || p.kind === 'paan_shop' || id === sh.anchor) continue;
+      const r = K[p.kind] || (/^giver_/.test(id) ? K.giver : K.place), d = Math.hypot(p.x - sh.cx, p.y - sh.cy);
+      if (d < r - 0.01) clearBad.push(sh.id + ' ' + id + ' ' + d.toFixed(1) + '<' + r);
+    }
     const h0 = list.map((s) => s.id + ':' + Math.round(s.cx) + ',' + Math.round(s.cy)).join('|');
     P._build();
     const h1 = P.list.map((s) => s.id + ':' + Math.round(s.cx) + ',' + Math.round(s.cy)).join('|');
-    return { st, anchors: raw.length, bad: bad.slice(0, 5), nbad: bad.length, same: h0 === h1, n: list.length };
+    return { st, anchors: raw.length, bad: bad.slice(0, 5), nbad: bad.length, same: h0 === h1, n: list.length, clearBad };
   });
   check(d1.st.shops >= 40 && d1.st.missed.length <= 4, `${d1.st.shops} paan shops (${Object.entries(d1.st.byAnchor).map((e) => e[0] + ' ' + e[1]).join(', ')}; without a spot: ${d1.st.missed.length})`, d1.st);
   check(['irani_cafe', 'bakery', 'chai_bandi', 'coffee'].every((k) => d1.st.byAnchor[k] > 0), 'beside Irani cafés, bakeries, chai bandis and the Banjara / Jubilee coffee bars', d1.st.byAnchor);
   check(d1.nbad === 0, 'every kiosk solid, its customer spot open ground, its counter facing the nearest road, 12-60 u from its café, none within 18 u of another', d1.bad);
+  check(d1.clearBad.length === 0, 'clear of the places: none within 36 u of a mission giver or home, 24 of stairs, 14 of any other spot', d1.clearBad.slice(0, 6));
   check(d1.same, 'deterministic: a rebuild puts them in the same places');
 
   console.log('\n== 2. the shop');
