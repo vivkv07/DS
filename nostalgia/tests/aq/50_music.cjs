@@ -1,7 +1,8 @@
 /* music: the original score (src/audio_score.js). Structure checks on the compiled tracks (every id compiles, pattern
  * lengths fit their sections, tempi match systems §12.4/§12.5, the ending's five sections + key lift + final Sa, the
- * oldcity qawwali claps on 1 and 4), then offline renders of every track through the music bus (loudness, clipping,
- * gaps) with WAV + spectrogram PNGs in tests/out/aq/music_<id>.png.
+ * oldcity qawwali claps on 1 and 4, the marfa band's style map), then offline renders of every track through the music
+ * bus (loudness, clipping, gaps, the lead over / level with its accompaniment) with WAV + spectrogram PNGs in
+ * tests/out/aq/music_<id>.png.
  *   AQ=music node nostalgia/tests/audio_quality.cjs        MUSIC_SEC=12 for quicker renders, MUSIC_ONLY=title,ending
  */
 'use strict';
@@ -128,9 +129,12 @@ module.exports = {
       check(riseHalves.length === 2 && riseHalves[1] - riseHalves[0] >= 1.5, 'the rise rises (first third ' + riseHalves[0] + ' dB -> last third ' + riseHalves[1] + ' dB)');
     }
     // melody balance: the lead alone vs the accompaniment alone (temporary muted re-voicings; removed afterwards)
-    const BAL = [['title', 'B', ['vln']], ['title', 'A', ['flute']], ['ending', 'theme', ['flute']], ['ending', 'lift', ['vln', 'flute']], ['oldcity', 'A', ['hl', 'sh']], ['oldcity', 'D', ['hl', 'sh']]];
+    const BAL = [['title', 'B', ['vln']], ['title', 'A', ['flute']], ['ending', 'theme', ['flute']], ['ending', 'lift', ['vln', 'flute']], ['oldcity', 'A', ['hl', 'sh']], ['oldcity', 'D', ['hl', 'sh']],
+      // the marfa band (audio_marfa.js) is drum-led: its tune has to sit level with the drums (>= 0 dB), not over them
+      ['marfa_day', 'A', ['cl'], 0], ['marfa_day', 'B', ['sh', 'cl'], 0], ['marfa_night', 'A', ['sar'], 0], ['marfa_oldcity', 'L2', ['tpt', 'cl'], 0],
+      ['marfa_oldcity', 'L3', ['tpt', 'cl'], 0], ['marfa_chase', 'A', ['sh', 'cl'], 0]];
     const bal = [];
-    for (const [id, sec, lead] of BAL) {
+    for (const [id, sec, lead, minDb] of BAL) {
       if (only && !only.includes(id)) continue;
       const lv = [];
       for (const keepLead of [true, false]) {
@@ -143,10 +147,10 @@ module.exports = {
         lv.push(L.metrics(r).rmsDb);
       }
       bal.push(id + '.' + sec + ' ' + lead.join('+') + ' ' + (lv[0] - lv[1] >= 0 ? '+' : '') + (lv[0] - lv[1]).toFixed(1) + ' dB');
-      if (!(lv[0] - lv[1] >= 2)) bal.push('  ^ too low');
+      if (!(lv[0] - lv[1] >= (minDb == null ? 2 : minDb))) bal.push('  ^ too low');
     }
     await ev(() => { delete N.audio._internal.TRACKS.__bal; N.audio.music.TRACKS = N.audio.music.TRACKS.filter((k) => k !== '__bal'); });
     log('melody over accompaniment: ' + bal.join(', '));
-    check(!bal.some((x) => /too low/.test(x)), 'every lead sits >= 2 dB over its accompaniment', bal);
+    check(!bal.some((x) => /too low/.test(x)), 'every lead sits >= 2 dB over its accompaniment (the marfa band\'s level with its drums)', bal);
   },
 };

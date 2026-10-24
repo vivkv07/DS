@@ -1541,6 +1541,54 @@ body.touch-on .osd-cas { width: 44px; height: 32px; margin: -6px -6px; }
 .osd-tape.paused .tp-pause { display: inline; }
 .osd-tape.paused .tp-num { border-color: rgba(154, 152, 168, 0.5); }
 .osd-tape.rolling .tp-num { color: #fff3c8; border-color: #fff3c8; }
+.osd-mus, .hud-mus {
+  display: none;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 1px 6px 0 4px;
+  border: 1px solid rgba(234, 242, 255, 0.35);
+  border-radius: 2px;
+  background: rgba(10, 8, 20, 0.35);
+  color: var(--osd);
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  line-height: 1.1;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+.osd-mus.show { display: inline-flex; }
+.osd-mus i, .hud-mus i { font-style: normal; font-size: 1.1em; }
+.osd-mus:hover, .hud-mus:hover { border-color: rgba(234, 242, 255, 0.75); }
+.osd-mus:active, .hud-mus:active { transform: translateY(1px); }
+.osd-mus.flash, .hud-mus.flash { animation: mus-flash 1s ease-out; }
+/* the second ♪, under the minimap where that sits top-left (touch, short landscape; beside it in phone portrait) */
+.hud-mus {
+  position: absolute;
+  z-index: 1;
+  left: calc(12px + var(--safe-l));
+  top: calc(80px + 112px + 12px + var(--safe-t));
+  font-family: var(--font-osd);
+  text-shadow: 2px 2px 0 var(--osd-shadow), 0 0 6px var(--osd-glow);
+  zoom: var(--hudz);
+}
+body.touch-on .osd-mus.show { display: none; }
+body.touch-on .hud-mus.show { display: inline-flex; }
+@media (max-width: 600px) and (orientation: portrait) {
+  /* beside the minimap's lower edge (under it is where the objective strip and the timer come down) */
+  .osd-mus.show { display: none; }
+  .hud-mus.show { display: inline-flex; }
+  .hud-mus, body.touch-on .hud-mus { top: calc(80px + 112px - 28px + var(--safe-t)); left: calc(12px + 112px + 14px + var(--safe-l)); }
+  body:not(.touch-on) .hud-mus { top: calc(84px + 112px - 28px + var(--safe-t)); left: calc(10px + 112px + 14px + var(--safe-l)); }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .osd-mus.show { display: none; }
+  .hud-mus.show { display: inline-flex; }
+  .hud-mus { top: calc(78px + 96px + 10px + var(--safe-t)); }
+}
+@keyframes mus-flash { 0%, 30% { background: rgba(255, 243, 200, 0.85); color: #1a1020; border-color: #fff3c8; } 100% { background: rgba(10, 8, 20, 0.35); } }
+body.touch-on .hud-mus { font-size: 16px; padding: 4px 10px 3px 8px; }
 .osd-rec { display: none; color: #ff5a46; text-shadow: 2px 2px 0 #4a0a0a, 0 0 8px rgba(255, 70, 50, 0.75); }
 .osd-rec.show { display: inline; animation: osd-blink 0.9s steps(2, start) infinite; }
 .osd-tape.rec-declined + .osd-rec { color: #c8c2d0; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6); }

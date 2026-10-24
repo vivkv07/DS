@@ -9,7 +9,8 @@
  * Story layer additions (systems §13.2, §14.2; story-core agent):
  *  - OSD: `▶ PLAY [cassette] SIDE A 083` (the tape counter from N.tape, `● REC` prompt, greyed
  *    `■ PAUSED`), the date from N.calendar (spins during a VHS jump) with `↻` while the week loops.
- *    The cassette icon is the touch RADIO button (tap = next source, hold = off).
+ *    The cassette icon is the touch RADIO button (tap = next source, hold = off). Under the district: ♪ ORIGINAL /
+ *    MARFA / BOTH, the background music (N.audio.music.style); a click / tap switches it (the B key).
  *  - Energy bar with the tummy notch (bar dimmed above N.player.tummy) and a chai-glass icon that
  *    blinks when hungry; a quick-item slot (best edible; click/tap eats one).
  *  - Walkman now-playing strip on the minimap; dashed hint search circles: searchCircle(id, {x, y, r}|null).
@@ -36,7 +37,7 @@
     clock: '', dateDay: -1, district: null, distCand: null, distT: 0, distCheck: 0,
     timer: null, toasts: [], tq: [], banners: [], bannerT: 0, bannerCur: null,
     hidden: false, mmT: 0, tummy: -1, hungry: null, tape: '', tapeCls: '', rec: '', loop: null, dateLbl: '',
-    qitem: undefined, qT: 0, walk: '', distPending: null, caps: [], circles: new Map(), jc: null,
+    qitem: undefined, qT: 0, walk: '', distPending: null, caps: [], circles: new Map(), jc: null, mus: null,
   };
 
   /* -------------------------------------------------------------- helpers */
@@ -141,7 +142,8 @@
       '<span class="osd-tape"><span class="tp-side">SIDE A</span><span class="tp-pause">&#9632; PAUSED</span><span class="tp-num">000</span></span>' +
       '<span class="osd-rec">&#9679; REC</span></div>' +
       '<div class="osd-row2"><span class="osd-time">--:--</span><span class="osd-date"></span><span class="osd-year"></span><span class="osd-loop" title="the week loops">&#8635;</span></div>' +
-      '<div class="osd-dist"></div>');
+      '<div class="osd-dist"></div>' +
+      '<button type="button" class="osd-mus interactive" tabindex="-1" aria-label="Background music"><i>&#9835;</i><span class="mu-name"></span></button>');
     dom.time = dom.osd.querySelector('.osd-time');
     dom.date = dom.osd.querySelector('.osd-date');
     dom.year = dom.osd.querySelector('.osd-year');
@@ -151,6 +153,17 @@
     dom.tapeNum = dom.osd.querySelector('.tp-num');
     dom.rec = dom.osd.querySelector('.osd-rec');
     dom.cas = dom.osd.querySelector('.osd-cas');
+    // ♪: the background music (original score / marfa band / both); click or tap = the next one (the B key). In the
+    // OSD under the district; where the minimap sits top-left (touch, phone layouts) the second one under the minimap
+    dom.mus = [dom.osd.querySelector('.osd-mus'), el('button', 'hud-mus interactive', root, '<i>&#9835;</i><span class="mu-name"></span>')];
+    for (const b of dom.mus) {
+      b.type = 'button'; b.tabIndex = -1; b.setAttribute('aria-label', 'Background music');
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
+      b.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try { const A = N.audio; if (A && A.unlock && !A.ready) A.unlock(); if (A && A.music && A.music.nextStyle) A.music.nextStyle(); } catch (er) { N.err('hud.mus', er); }
+      });
+    }
     // the cassette icon is the touch RADIO button: tap = next source, hold 0.6 s = off
     const casUp = () => { if (dom.cas._held) { dom.cas._held = false; dom.cas.classList.remove('on'); try { N.input.hold('radio', false); } catch (e) { N.err('hud.cas', e); } } };
     dom.cas.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); dom.cas._held = true; dom.cas.classList.add('on'); try { N.input.hold('radio', true); } catch (er) { N.err('hud.cas', er); } });
@@ -611,6 +624,18 @@
       if (cls !== state.tapeCls) { state.tapeCls = cls; dom.tape.className = 'osd-tape ' + cls; dom.osd.classList.toggle('recording', !!R); }
       const rl = R ? R.label : '';
       if (rl !== state.rec) { state.rec = rl; dom.rec.textContent = rl || '● REC'; dom.rec.classList.toggle('show', !!R); }
+    }
+    // ♪ the background music
+    const AM = N.audio && N.audio.music, sts = AM && AM.STYLES;
+    const mu = sts && sts.length > 1 ? (sts.find((x) => x.id === AM.style) || sts[0]).short : '';
+    if (mu !== state.mus) {
+      const flash = !!(state.mus && mu);
+      state.mus = mu;
+      for (const b of dom.mus) {
+        if (flash) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+        b.querySelector('.mu-name').textContent = mu; b.classList.toggle('show', !!mu);
+        b.title = mu ? 'Background music: ' + AM.styleName(AM.style) + ' (' + (N.input && N.input.keyName ? N.input.keyName(N.input.keyFor('music')) : 'B') + ')' : '';
+      }
     }
     // walkman now-playing strip + spinning reels
     const WK = N.walkman && N.walkman.playing;

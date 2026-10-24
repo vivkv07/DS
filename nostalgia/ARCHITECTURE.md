@@ -50,7 +50,8 @@ nostalgia/
   style.css         all DOM/UI styling (tokens on :root)
   src/core.js       N namespace, utils, math, seeded RNG, events, systems, state stack, clock
   src/input.js      keyboard + touch + gamepad  -> N.input
-  src/audio.js      WebAudio SFX, music sequencer, radio -> N.audio
+  src/audio.js      WebAudio SFX, music sequencer, radio -> N.audio (+ helpers audio_instruments / audio_score /
+                    audio_marfa (the marfa band, a second background music) / audio_vehicles / audio_ambience, §17)
   src/render.js     canvas, pixel scaling, camera, projection, layer queue, chunk cache, draw helpers -> N.render, N.draw
   src/worlddata.js  pure data: the map (districts, roads, water, parks, blocks, landmarks, places) -> N.WORLD_DATA
   src/terrain_data.js GENERATED (tools/geo/build_terrain.cjs, from SRTM terrarium tiles): N.TERRAIN_DATA, real
@@ -757,9 +758,10 @@ stick direction, throttle = stick magnitude). RUN button = handbrake in vehicles
 
 ## 9. Input — `N.input`
 
-Actions: `up down left right action run horn map journal pause radio view`.
+Actions: `up down left right action run horn map journal pause radio view music`.
 Keys: WASD/arrows; action = E, F, Enter; run = Shift; horn = Space; map = M;
-journal = J; pause = Esc/P; radio = Q (or R); view = V (cycles top-down / 3D / first person, §20).
+journal = J; pause = Esc/P; radio = Q (or R); view = V (cycles top-down / 3D / first person, §20);
+music = B (pad L3; the ♪ on the HUD: the background music original score / marfa band / both, §17).
 ```
 N.input.move → {x, y} (-1..1, normalised; joystick analog)
 N.input.down(a), N.input.pressed(a) (edge this frame), N.input.released(a)
@@ -1050,7 +1052,11 @@ music.mood(id | null)            soft request (below chase/victory); music.intro
 music.current, music.ended       'music:ended' {id} fires when a locked non-looping track (e.g. 'ending') ends
 music.sections(id) -> [{name, start}], music.position()   sync cutscenes to the score
 music.TRACKS: title, flashback, day, night, chase, oldcity, tension, victory, ending, festival,
-              numaish, kites, + radio songs r_chandni, r_barish, r_baraat, r_neon, r_pager
+              numaish, kites, + radio songs r_chandni, r_barish, r_baraat, r_neon, r_pager,
+              + the marfa band marfa_day, marfa_night, marfa_oldcity, marfa_chase
+music.style, music.STYLES, setStyle(id, {quiet}), nextStyle()   the background music: 'score' (default) |
+                                 'marfa' | 'mix' (one free-roam pass each); persisted in the audio settings (style);
+                                 the 'music' action (B), the HUD ♪ and Settings > Sound switch it; emits 'music:style'
 radio.next() / set(i | -1) / off() / toggle(), radio.on, radio.station, radio.text, radio.STATIONS
 walkman.play(id?) / stop() / next() / rewind() / unlock(id) / library / playing;  SONGS {id: {title, artist}}
 ambient.set(bedId | null), ambient.bed, ambient.emitters, ambient.BEDS
@@ -1064,7 +1070,9 @@ renderOffline(name, sec), renderTrackOffline(id, sec) -> Promise<{peak, rms, buf
 Music director (automatic unless locked): title screen -> `title`; a new game (not
 skipIntro) opens on `title` for ~40 s; free roam -> `day` / `night` (N.clock.isNight) /
 `oldcity` (Old City districts), one pass then 25-50 s of ambience-only rest, district
-changes switch only after 10 s; Chappal Meter >= 3 -> `chase` (held 4 s after escaping);
+changes switch only after 10 s; Chappal Meter >= 3 -> `chase` (held 4 s after escaping); the style maps these
+free-roam and chase cues (marfa: day / hitec / cantonment -> marfa_day, night -> marfa_night, oldcity ->
+marfa_oldcity, chase / chase5 -> marfa_chase), switching at once (a rest is cut short), story cues keep the score;
 `mission:complete` -> fanfare then `victory`; `N.missions.active.music` (a track id) is
 honoured; radio or Walkman playing -> score yields. Story calls `N.audio.music.play('ending')`
 for the Charminar finale (5 sections: alaap, theme, rise, lift (key change), coda).
@@ -1091,13 +1099,15 @@ scheduler; the context is suspended while the tab is hidden. Test: `node nostalg
 
 **Helper files** (loaded right after audio.js, each extends the core only through `N.audio.ext`):
 `audio_instruments.js` (physical-model instruments + drum kits), `audio_score.js` (the whole original
-score: replaces the core's tracks by id), `audio_vehicles.js` (engine voices, horns, bells, tyres,
+score: replaces the core's tracks by id), `audio_marfa.js` (the Hyderabadi marfa band: marfa, dhol, tasha,
+jhanjh and the dancers' "Hoi!" in a triplet groove in Hijaz, clarinet / shehnai / sarangi / trumpet tunes; kits
+jhanjh + hoi; ext.registerStyle('marfa')), `audio_vehicles.js` (engine voices, horns, bells, tyres,
 potholes), `audio_ambience.js` (animals, city one-shots, beds, time-of-day schedules, continuous loops).
 ```
 N.audio.ext   stable extension API (full comment block in audio.js "extension API"); also for other workers
   P  primitives (osc0 gain filt shaper panner sp tone burst strike pulses noiseVoice noiseBuf crowd wave ...)
   registerSfx(name, fn(ac,out,t,o)->end, {cooldown, gain, ui, caption, capMax})  registerInst / registerKs /
-  registerKit / registerScale / registerTrack / registerStation / registerSong / registerEngine /
+  registerKit / registerScale / registerTrack / registerStation / registerSong / registerStyle / registerEngine /
   setEngineVoice(factory(ac, dest, type, profile, veh, isPlayer)) / setHornFor(fn) / registerBed /
   registerPlace(rule, {first}) / registerFestival / DAY_ONLY / onUpdate(id, fn(dt, mode, info), order)
   bus(name): master sfx amb engine ui music walk radio revIn musicRevIn worldLP worldDuck musicDuck sfxDuck ambDuck engPlayer

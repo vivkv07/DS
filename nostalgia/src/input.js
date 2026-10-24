@@ -2,6 +2,7 @@
  * Keyboard + gamepad + touch (floating joystick, ACTION/RUN/HORN, MAP/PAUSE) -> N.input.
  * Edges (pressed/released) are computed once per update step by the 'input' system
  * (order 0, runs in every mode). Contract: ARCHITECTURE.md §9.
+ * Action 'music' (B / pad L3 / the ♪ on the HUD) cycles the background music (N.audio.music.nextStyle).
  * 3D view (ARCHITECTURE §20): action 'view' (V / pad R3 / the touch VIEW pill) cycles the view;
  * while N.view.is3D() in 'play', N.input.move is rotated by the camera yaw (N.view.yaw) so "up" is
  * forward (N.input.rawMove keeps the screen-relative vector). Look input for the 3D camera:
@@ -17,24 +18,24 @@
   const N = window.N;
   const { clamp } = N.util;
 
-  const ACTIONS = ['up', 'down', 'left', 'right', 'action', 'run', 'horn', 'map', 'journal', 'pause', 'radio', 'view'];
+  const ACTIONS = ['up', 'down', 'left', 'right', 'action', 'run', 'horn', 'map', 'journal', 'pause', 'radio', 'view', 'music'];
   const KEYMAP = {
     KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down',
     KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
     KeyE: 'action', KeyF: 'action', Enter: 'action', NumpadEnter: 'action',
     ShiftLeft: 'run', ShiftRight: 'run', Space: 'horn',
     KeyM: 'map', KeyJ: 'journal', Escape: 'pause', KeyP: 'pause', KeyQ: 'radio', KeyR: 'radio',
-    KeyV: 'view',
+    KeyV: 'view', KeyB: 'music',
   };
-  // Gamepad "standard" mapping (11 = right-stick click cycles the 3D view)
-  const PADMAP = { 0: 'action', 1: 'horn', 2: 'run', 3: 'radio', 4: 'journal', 5: 'run', 7: 'run', 8: 'map', 9: 'pause', 11: 'view', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
+  // Gamepad "standard" mapping (11 = right-stick click cycles the 3D view, 10 = left-stick click the background music)
+  const PADMAP = { 0: 'action', 1: 'horn', 2: 'run', 3: 'radio', 4: 'journal', 5: 'run', 7: 'run', 8: 'map', 9: 'pause', 10: 'music', 11: 'view', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
 
   /* ---- key remapping (Settings > Controls). Each action has one primary key the player can move to any
    * other key; its other default keys (arrows, F / Enter for ACTION, Esc for pause) keep working unless the
    * player puts another action on them. KEYMAP is changed in place, so modules that read N.input.KEYMAP
    * follow. Persisted in localStorage 'nostalgia.keys.v1' as {action: code}. */
   const DEFAULT_KEYMAP = Object.assign({}, KEYMAP);
-  const PRIMARY = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', action: 'KeyE', run: 'ShiftLeft', horn: 'Space', map: 'KeyM', journal: 'KeyJ', pause: 'KeyP', radio: 'KeyQ', view: 'KeyV' };
+  const PRIMARY = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', action: 'KeyE', run: 'ShiftLeft', horn: 'Space', map: 'KeyM', journal: 'KeyJ', pause: 'KeyP', radio: 'KeyQ', view: 'KeyV', music: 'KeyB' };
   const FIXED_CODES = { Escape: 1, Tab: 1, F5: 1, F11: 1, F12: 1, MetaLeft: 1, MetaRight: 1, ContextMenu: 1 };
   const BIND_KEY = 'nostalgia.keys.v1';
   let customKeys = {};

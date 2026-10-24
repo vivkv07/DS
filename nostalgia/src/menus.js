@@ -1061,6 +1061,10 @@
     { sec: 'Sound' },
     { id: 'vol.master', label: 'Master volume', type: 'slider' },
     { id: 'vol.music', label: 'Music', type: 'slider' },
+    { id: 'music.style', label: 'Background music', type: 'seg', opts: SEG([['score', 'Original'], ['marfa', 'Marfa band'], ['mix', 'Both']]),
+      help: () => 'Hyderabad\'s marfa drums (marfa, dhol, tasha, jhanjh) or the original score, or both taking turns. ' + (N.input && N.input.keyName && N.input.keyFor ? N.input.keyName(N.input.keyFor('music')) : 'B') + ' switches it any time (gamepad: L3; touch: the ♪ at the top).',
+      get: () => (N.audio && N.audio.music && N.audio.music.style) || 'score',
+      set: (v) => { if (N.audio && N.audio.music && N.audio.music.setStyle) N.audio.music.setStyle(v, { quiet: true }); } },
     { id: 'vol.sfx', label: 'Sound effects', type: 'slider' },
     { id: 'vol.radio', label: 'Radio & walkman', type: 'slider' },
     { id: 'vol.ambient', label: 'City ambience', type: 'slider' },
@@ -1085,6 +1089,7 @@
     { id: 'key.journal', label: 'Journal', type: 'key', action: 'journal' },
     { id: 'key.radio', label: 'Walkman / radio', type: 'key', action: 'radio' },
     { id: 'key.view', label: 'Change view (top-down / 3D)', type: 'key', action: 'view' },
+    { id: 'key.music', label: 'Background music: original / marfa / both', type: 'key', action: 'music' },
     { id: 'key.pause', label: 'Pause (Esc always works)', type: 'key', action: 'pause' },
     { id: 'key.up', label: 'Move up / forward', type: 'key', action: 'up' },
     { id: 'key.down', label: 'Move down / brake', type: 'key', action: 'down' },
@@ -1162,9 +1167,9 @@
     const I = N.input, k = (a) => esc(I && I.keyName && I.keyFor ? I.keyName(I.keyFor(a)) : '?');
     const L = {
       keyboard: '<b>Keyboard</b> ' + k('up') + k('left') + k('down') + k('right') + ' or arrows move · ' + k('action') + ' / Enter ACTION · ' + k('run') + ' run (handbrake on wheels) · ' +
-        k('horn') + ' horn · ' + k('map') + ' map · ' + k('journal') + ' journal · ' + k('radio') + ' radio · ' + k('view') + ' view · Esc pause · 1–4 pick an answer',
-      touch: '<b>Touch</b> drag the left side to move · yellow ACTION · red RUN / BRAKE · teal HORN (on foot near a road: calls an AUTO!) · the cassette = radio · MAP and ‖ at the top',
-      gamepad: '<b>Gamepad</b> left stick move · A action · B horn (back in menus) · X / RB / RT run · Y radio · LB journal · Back map · Start pause · R3 view · right stick looks around in 3D',
+        k('horn') + ' horn · ' + k('map') + ' map · ' + k('journal') + ' journal · ' + k('radio') + ' radio · ' + k('view') + ' view · ' + k('music') + ' music · Esc pause · 1–4 pick an answer',
+      touch: '<b>Touch</b> drag the left side to move · yellow ACTION · red RUN / BRAKE · teal HORN (on foot near a road: calls an AUTO!) · the cassette = radio · ♪ = background music · MAP and ‖ at the top',
+      gamepad: '<b>Gamepad</b> left stick move · A action · B horn (back in menus) · X / RB / RT run · Y radio · LB journal · Back map · Start pause · R3 view · L3 music · right stick looks around in 3D',
     };
     const first = I && L[I.device] ? I.device : 'keyboard'; // the device in hand comes first
     return [first].concat(Object.keys(L).filter((x) => x !== first)).map((x) => L[x]).join('<br>');

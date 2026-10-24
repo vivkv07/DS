@@ -18,7 +18,7 @@
  *   ctx                              the live AudioContext (or null).
  *   setVolume(bus, v) / getVolume(bus)   bus: 'master'|'music'|'sfx'|'radio'|'ambient', v 0..1 (persisted).
  *   mute(bool) / toggleMute() / muted    persisted in localStorage 'nostalgia.audio.v1' (try/catch).
- *   settings                         live settings object {master, music, sfx, radio, ambient, muted}.
+ *   settings                         live settings object {master, music, sfx, radio, ambient, muted, style}.
  *   duck(on, amount=0.32)            manual music duck (dialogue ducks automatically).
  *   sfx(name, {x, y, vol, pitch, pan, surface, variant, ...}) -> true|false
  *                                    one-shot; x/y = world position (omit for UI/non-positional).
@@ -31,6 +31,10 @@
  *                                         flashback, festival, numaish, kites (+ radio songs).
  *   music.ended                      true once a non-looping locked track (e.g. 'ending') finished.
  *   music.mood(id|null) / music.intro(sec|false) / music.sections(id) / music.position()
+ *   music.style / music.STYLES [{id, name, short}] / music.setStyle(id, {quiet}) / music.nextStyle()
+ *                                    the background music: 'score' (the original), 'marfa' (audio_marfa.js: the
+ *                                    Hyderabadi marfa band) or 'mix' (taking turns); free roam + chase follow it at
+ *                                    once, story cues keep the score; persisted; the 'music' input action (B) cycles.
  *   music(id) / play(name, o) / stopMusic() / volume   aliases kept from the engine stub
  *   tape(amount 0..1)                cassette wow/flutter + muffle on the music bus (flashbacks);
  *                                    also follows N.render.fx.vhs automatically.
@@ -108,7 +112,7 @@
   N.audio = A;
 
   /* ============================================================ settings */
-  const S = { master: 0.85, music: 0.6, sfx: 0.85, radio: 0.75, ambient: 0.65, muted: false };
+  const S = { master: 0.85, music: 0.6, sfx: 0.85, radio: 0.75, ambient: 0.65, muted: false, style: 'score' };
   (function loadSettings() {
     try {
       const raw = localStorage.getItem(KEY);
@@ -3489,7 +3493,25 @@
   }
 
   /* ============================================================ music director */
-  const music = { cur: null, seq: null, lockId: null, lockDone: false, moodId: null, restUntil: 0, victoryAt: 0, victoryUntil: 0, stingUntil: 0, introUntil: 0, chaseUntil: 0, roamDiffSince: 0, ended: false, trackTape: 0 };
+  const music = { cur: null, seq: null, lockId: null, lockDone: false, moodId: null, restUntil: 0, victoryAt: 0, victoryUntil: 0, stingUntil: 0, introUntil: 0, chaseUntil: 0, roamDiffSince: 0, ended: false, trackTape: 0, mixAlt: false };
+  // Background-music styles (S.style, persisted): 'score' = the original score; others are registered by helper files
+  // (ext.registerStyle: audio_marfa.js adds 'marfa') with a map {cue: track} for the director's free-roam and chase
+  // cues (day hitec cantonment night oldcity chase chase5); 'mix' takes turns, one free-roam pass each. Story cues
+  // (title, missions, moods, victory, the ending) always keep the score.
+  const STYLES = { score: { name: 'Original score', short: 'ORIGINAL', map: {} } };
+  const STYLE_ORDER = ['score'];
+  const styleIds = () => STYLE_ORDER.concat(STYLE_ORDER.length > 1 ? ['mix'] : []);
+  const styleName = (id) => (id === 'mix' ? 'Both, taking turns' : STYLES[id] ? STYLES[id].name : id);
+  const styleShort = (id) => (id === 'mix' ? 'BOTH' : STYLES[id] ? STYLES[id].short || id.toUpperCase() : id);
+  function styleNow() {
+    const id = styleIds().indexOf(S.style) >= 0 ? S.style : 'score';
+    if (id !== 'mix') return id;
+    return music.mixAlt ? STYLE_ORDER[1] : 'score';
+  }
+  function styled(cue) {
+    const st = STYLES[styleNow()], id = st && st.map[cue];
+    return id && TRACKS[id] ? id : cue;
+  }
   function wantedLevel() {
     const w = N.wanted;
     if (w) { const l = w.level != null ? w.level : w.value != null ? w.value : w.meter; if (typeof l === 'number') return l; }
@@ -3514,7 +3536,7 @@
     if (music.stingUntil > now) return null;
     if (wantedLevel() >= 3) music.chaseUntil = now + 4; // keep the chase going a moment after escaping
     // Chappal Meter 5 adds the comic tuba motif ('chase5'); sticky until the chase ends so 4<->5 doesn't restart the cue
-    if (music.chaseUntil > now) { if (wantedLevel() >= 5 && TRACKS.chase5) music.chase5 = true; return music.chase5 ? 'chase5' : 'chase'; }
+    if (music.chaseUntil > now) { if (wantedLevel() >= 5 && TRACKS.chase5) music.chase5 = true; return styled(music.chase5 ? 'chase5' : 'chase'); }
     music.chase5 = false;
     if (music.victoryUntil > now) return now >= music.victoryAt ? 'victory' : null;
     if (music.moodId) return music.moodId;
@@ -3523,12 +3545,13 @@
     if (m && typeof m === 'object' && typeof m.music === 'string' && TRACKS[m.music]) return m.music;
     if (music.restUntil > now) return null;
     // free roam: don't flip-flop at district borders; switch only after the new area held for 10 s
-    const r = currentRoamTrack();
+    const r = styled(currentRoamTrack());
     const cur = music.cur, curRoam = cur && TRACKS[cur] && TRACKS[cur].roam;
-    if (curRoam && r !== cur) {
+    if (curRoam && r !== cur && !music.styleJump) {
       if (!music.roamDiffSince) music.roamDiffSince = now;
       if (now - music.roamDiffSince < 10) return cur;
     } else music.roamDiffSince = 0;
+    music.styleJump = false;
     return r;
   }
   function startMusic(id, fadeIn) {
@@ -3548,7 +3571,7 @@
       const id = music.cur;
       liveSeqs.delete(sq); sq.release(); music.seq = null; music.cur = null;
       if (id && id === music.lockId) { music.lockDone = true; music.ended = true; try { N.emit('music:ended', { id }); } catch (e) { /* ignore */ } }
-      else if (TRACKS[id] && TRACKS[id].roam) music.restUntil = now + rr(25, 50);
+      else if (TRACKS[id] && TRACKS[id].roam) { music.restUntil = now + rr(25, 50); if (S.style === 'mix') music.mixAlt = !music.mixAlt; }
       if (id === 'victory') music.victoryUntil = 0;
       return;
     }
@@ -3759,6 +3782,8 @@
     }
     // radio button
     if (I && I.pressed && I.pressed('radio') && v && vehicleHasRadio(v)) A.radio.next();
+    // the background-music style
+    if (I && I.pressed && I.pressed('music')) A.music.nextStyle();
     // footsteps (only if no footstep events lately)
     if (!v && now - hooks.footEvt > 1.5) {
       const sp0 = Math.hypot(p.vx || 0, p.vy || 0);
@@ -4100,6 +4125,9 @@
   const musicApi = function (id, o) { return id == null || id === false ? musicApi.stop() : musicApi.play(id, o); };
   Object.defineProperty(musicApi, 'current', { get: () => music.cur });
   Object.defineProperty(musicApi, 'ended', { get: () => music.ended });
+  // the background-music style: 'score' (the original score), 'marfa' (audio_marfa.js), 'mix' (taking turns)
+  Object.defineProperty(musicApi, 'style', { get: () => (styleIds().indexOf(S.style) >= 0 ? S.style : 'score') });
+  Object.defineProperty(musicApi, 'STYLES', { get: () => styleIds().map((id) => ({ id, name: styleName(id), short: styleShort(id) })) });
   A.music = Object.assign(musicApi, {
     TRACKS: Object.keys(TRACKS).filter((k) => !/^id_/.test(k)),
     title(id) { const t = TRACKS[id]; return t ? t.name || (TRACKS[t.base] && TRACKS[t.base].name) : null; },
@@ -4116,6 +4144,26 @@
     // section start times (s) of a track, e.g. to sync the Charminar finale to the ending's key-change "lift"
     sections(id) { const c = TRACKS[id] && compile(id); return c ? c.tr.order.map((name, i) => ({ name, start: +c.times[c.secStart[i]].toFixed(3) })) : []; },
     position() { const sq = music.seq; return sq && ctx ? Math.max(0, ctx.currentTime - sq.t0) : 0; },
+    /** switch the style now: the free-roam / chase music changes at once (a rest is cut short); persisted.
+     *  o.quiet: no toast. Emits 'music:style' {style, name}. */
+    setStyle(id, o) {
+      if (styleIds().indexOf(id) < 0) return false;
+      const prev = A.music.style;
+      S.style = id; saveSettings();
+      if (id === 'mix') music.mixAlt = prev !== STYLE_ORDER[1];
+      music.restUntil = 0; music.roamDiffSince = 0; music.styleJump = true;
+      const name = styleName(id);
+      if (!(o && o.quiet)) {
+        const k = N.input && N.input.keyName && N.input.keyFor ? N.input.keyName(N.input.keyFor('music')) : 'B';
+        const yields = (radio.on && radio.seq) || walkman.seq ? ' (after the radio / walkman)' : '';
+        try { if (N.hud && typeof N.hud.toast === 'function') N.hud.toast('♪ Background music: ' + name + yields + '  ·  ' + k + ' to switch', 2600, { key: 'music' }); } catch (e) { /* ignore */ }
+      }
+      try { N.emit('music:style', { style: id, name }); } catch (e) { /* ignore */ }
+      return true;
+    },
+    /** the next style in turn (score -> marfa -> both -> score); the B key, the ♪ button on the screen */
+    nextStyle(o) { const ids = styleIds(); return A.music.setStyle(ids[(ids.indexOf(A.music.style) + 1) % ids.length], o) ? A.music.style : null; },
+    styleName,
   });
   A.play = (name, o) => playSfx(name, o);     // stub alias of sfx()
   A.stopMusic = (fade) => A.music.stop(fade); // stub alias
@@ -4216,6 +4264,8 @@
   //                                  scheduled in real time (never render a buffer inline then: fall back to a cached one)   ext.registerKs(name, def)   ext.registerKit(name, strokes, {cache: false = the kit caches itself})
   //   ext.registerScale(name, semis[])   ext.registerTrack(id, def)  (replaces; recompiles; music.TRACKS updated)
   //   ext.registerStation(i, station)    ext.registerSong(id, {title, artist, station})
+  //   ext.registerStyle(id, {name, short, map: {cue: trackId}})  a background-music style (music.setStyle): the director's
+  //                                  free-roam / chase cues (day hitec cantonment night oldcity chase chase5) -> its tracks
   //   ext.registerEngine(type, profile)  ext.setEngineVoice(factory(ac, dest, type, profile, vehicle, isPlayer) -> voice|null)
   //                                  voice: {update(sf 0..1.2, thr 0..1, g gain, pan -1..1, info{veh, player, dt, dop, dist}), stop(), type}
   //   ext.setHornFor(fn(type, profile) -> name | {name, ...sfx opts} | null)
@@ -4282,6 +4332,7 @@
     registerTrack(id, def) { TRACKS[id] = def; COMPILED.clear(); A.music.TRACKS = Object.keys(TRACKS).filter((k) => !/^id_/.test(k)); },
     registerStation(i, st) { STATIONS[i] = st; PLAYLISTS.length = 0; },
     registerSong(id, info) { SONGS[id] = info; },
+    registerStyle(id, def) { if (!id || id === 'mix' || !def || !def.map) return false; STYLES[id] = { name: def.name || id, short: def.short || String(id).toUpperCase(), map: Object.assign({}, def.map) }; if (STYLE_ORDER.indexOf(id) < 0) STYLE_ORDER.push(id); return true; },
     registerEngine(type, profile) { ENGINES[type] = profile; },
     setEngineVoice(factory) { engineFactory = typeof factory === 'function' ? factory : null; },
     setHornFor(fn) { extHornFor = typeof fn === 'function' ? fn : null; },
