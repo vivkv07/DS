@@ -4,7 +4,8 @@
  * Tiers: Low and High are the core's (src/view3d.js applyTier). Ultra is High plus, for strong desktop GPUs:
  *   - the scene rendered off screen exactly as High shows it (+ depth), then, on that frame:
  *   - ambient occlusion: soft contact shadow under vehicles, round feet, poles and kerbs, in corners and under eaves
- *     (half resolution, 12 samples from the depth buffer, depth-aware blur), faded out with distance;
+ *     (half resolution, 12 samples from a 32-bit float depth buffer, normals over 16 texels on smooth ground so the
+ *     depth buffer's fine steps on a flat road never show as bands, depth-aware blur), faded out with distance;
  *   - aerial perspective: a haze over distance, thinner with height, warmed towards the sun;
  *   - bloom: lit windows, lamps, floodlit hoardings, headlights, the low sun (a 5-level mip chain);
  *   - sun shafts through gaps when the sun is up and in view;
@@ -172,11 +173,17 @@
     '  float d = texture2D(tDepth, vUv).x;',
     '  if (d >= 0.99999) { gl_FragColor = vec4(1.0); return; }',
     '  vec3 p = vpos(vUv);',
-    '  vec2 o = uTexel * 2.0;',
-    // the normal from the flatter neighbour on each axis (no halo across depth edges)
+    '  vec2 o = uTexel * 2.0, o8 = uTexel * 8.0;',
+    // the normal: across 16 texels where the surface runs on smoothly through this one (a depth buffer stores the
+    // flat ground at a grazing view in fine steps: a tangent over 2 texels tilts with every step and the AO drew
+    // them as soft dark bands across the road; over 16 they average out), else from the flatter 2-texel neighbour
+    // on each axis (no halo across depth edges)
     '  vec3 pr = vpos(vUv + vec2(o.x, 0.0)), pl = vpos(vUv - vec2(o.x, 0.0)), pu = vpos(vUv + vec2(0.0, o.y)), pd = vpos(vUv - vec2(0.0, o.y));',
     '  vec3 dx = abs(pr.z - p.z) < abs(p.z - pl.z) ? pr - p : p - pl;',
     '  vec3 dy = abs(pu.z - p.z) < abs(p.z - pd.z) ? pu - p : p - pd;',
+    '  vec3 wr = vpos(vUv + vec2(o8.x, 0.0)) - p, wl = p - vpos(vUv - vec2(o8.x, 0.0)), wu = vpos(vUv + vec2(0.0, o8.y)) - p, wd = p - vpos(vUv - vec2(0.0, o8.y));',
+    '  if (length(wr - wl) < 0.5 * length(wr + wl)) dx = wr + wl;',
+    '  if (length(wu - wd) < 0.5 * length(wu + wd)) dy = wu + wd;',
     '  vec3 n = normalize(cross(dx, dy));',
     '  if (dot(n, p) > 0.0) n = -n;',
     '  float z = -p.z;',
@@ -387,6 +394,7 @@
     const caps = r.capabilities, ex = r.extensions;
     PP.half = caps.isWebGL2 ? !!ex.get('EXT_color_buffer_float') : !!(ex.has('OES_texture_half_float') && ex.has('EXT_color_buffer_half_float'));
     PP.ao = caps.isWebGL2 || ex.has('WEBGL_depth_texture');
+    PP.fdepth = caps.isWebGL2;
     PP.built = true;
   }
   function freeTargets() {
@@ -404,7 +412,8 @@
       return t;
     };
     const R = { mips: [] };
-    if (PP.ao) { const dt = new T.DepthTexture(w, h); dt.type = T.UnsignedIntType; R.scene = mk(w, h, { depthBuffer: true, depthTexture: dt }); } else R.scene = mk(w, h, { depthBuffer: true });
+    // the AO reads depth: 32-bit float where WebGL2 has it (the finest any GPU stores)
+    if (PP.ao) { const dt = new T.DepthTexture(w, h); dt.type = PP.fdepth ? T.FloatType : T.UnsignedIntType; R.scene = mk(w, h, { depthBuffer: true, depthTexture: dt }); } else R.scene = mk(w, h, { depthBuffer: true });
     // three r149 renders into a target in linear colour, except an XR one, which gets its texture's encoding: flagged
     // so, the materials write exactly what they write on the screen (tone-mapped, sRGB, fog and all) and the post
     // starts from the High frame. (The flag only picks that output encoding here; the storage stays plain RGBA16F/8.)

@@ -102,7 +102,8 @@ nostalgia/
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
   src/view3d_post.js (after view3d_actors.js) the Graphics setting (Auto / Low / High / Ultra, Screen section,
                     localStorage 'nostalgia.graphics') and the Ultra tier: the scene drawn off screen exactly as
-                    High shows it (+ depth), then ambient occlusion, aerial haze warmed towards the sun, bloom,
+                    High shows it (+ a 32-bit float depth), then ambient occlusion (normals over 16 texels on smooth
+                    ground: a depth buffer's fine steps on a flat road must not read as creases), aerial haze, bloom,
                     sun shafts, a film grade, FXAA + sharpening + grain; a richer sky (the core sky's cloud block
                     swapped for shaded clouds); 4096 shadow map, 8 point lights, render scale up to 2x. Auto picks
                     Ultra on discrete / Apple-silicon desktop GPUs (WebGL2), steps an auto Ultra down to High below
