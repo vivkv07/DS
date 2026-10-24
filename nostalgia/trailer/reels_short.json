@@ -1,0 +1,19 @@
+{
+ "note": "Reels/Shorts short cut (9:16, 58.8 s): a bar-aligned edit of the master timeline + score.wav, so every kept bar keeps its own picture, caption and beat-synced SFX. bars [first, last] are master score bars (bar n = master beats 4n-4..4n-1). Master transitions (assemble.cjs TRANS) inside a piece play where they fall; fx = the master transition (by its beat) to play at this piece's join when it does not start on one. tailBeats: master beats held after the last piece, under an audio fade of fadeOut s.",
+ "pieces": [
+  {"bars": [2, 3], "fx": 0, "what": "prologue hook: the cassette label + 'Gurthunda?' -> REWIND 2026->2003"},
+  {"bars": [4, 5], "what": "reveal: Charminar at sunrise, Chinnu on the roof"},
+  {"bars": [6, 7], "what": "g_cycle_oldcity"},
+  {"bars": [12, 12], "fx": 40, "what": "s_story, second half: REC + the build"},
+  {"bars": [13, 13], "what": "a_kite, first half"},
+  {"bars": [15, 15], "what": "a_lingocha, first half: the ball smashes the stone stack"},
+  {"bars": [17, 17], "what": "a_cricket"},
+  {"bars": [23, 24], "what": "a_antenna (TOOFAN KID locks in) + a_clap and the tom fill"},
+  {"bars": [25, 27], "what": "f_ganesh + f_ramzan"},
+  {"bars": [29, 30], "what": "f_numaish + the downlifter -> g_top_chase (Chappal Meter)"},
+  {"bars": [32, 35], "what": "g_lightning + riser -> finale: TEN MONTHS LEFT / ONE TAPE / THE WHOLE CITY"},
+  {"bars": [37, 39], "fx": 140, "what": "title pops 5-8 + SLAM -> end card"}
+ ],
+ "tailBeats": 2,
+ "fadeOut": 1.2
+}

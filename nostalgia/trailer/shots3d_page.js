@@ -1,0 +1,216 @@
+/* NOSTALGIA trailer — in-page staging for the 3D drone shots (used by shots3d.cjs; needs stage.js).
+ * STAGE_PREP(seg, sh) stages a segment (time, weather, hero, warm-up) -> info
+ * STAGE_FRAME(f, nf, capture) poses camera + hero for frame f, steps 1/30 s, returns a JPEG data URL
+ */
+(() => {
+  'use strict';
+  const N = window.N, U = N.util;
+  const FPS = 30, B = 0.4;
+  const ease = { lin: (t) => t, io: (t) => t * t * (3 - 2 * t), out: (t) => 1 - Math.pow(1 - t, 3), in: (t) => t * t * t, ioq: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) };
+  let CUR = null, CUR_CLEAR = null, CUR_LOW = false;
+  const FIN = { used: false, kites: null, ramzan: null };
+  // finale time-lapse: the clock runs sh.clock[0] -> [1] across the shot; kites until kitesOff, Ramzan lights from ramzanOn
+  function finaleClock(u, sh) {
+    const m = sh.clock[0] + (sh.clock[1] - sh.clock[0]) * u;
+    N.clock.set(Math.floor(m / 60), m % 60);
+    const kites = m < sh.kitesOff, ram = m >= sh.ramzanOn;
+    if (kites !== FIN.kites) { N.seasons.set('sankranti', kites); FIN.kites = kites; }
+    if (ram !== FIN.ramzan) { N.seasons.set('ramzan', ram); FIN.ramzan = ram; }
+    FIN.used = true;
+    return m;
+  }
+
+  function lmById(id) { return N.world.data.landmarks.find((l) => l.id === id) || null; }
+  function settle() { for (let k = 0; k < 3; k++) { N.view3d.settle(30000); window.__step(1 / FPS); } }
+  function streamAt(x, y) { N.render.camOverride = { x, y, zoom: 1, snap: true }; N.render.cam.x = x; N.render.cam.y = y; }
+
+  function tallestRoof(lm, ring) {
+    let best = null;
+    const r1 = ring[1], R = N.respect;
+    N.world.queryStructures(lm.x - r1, lm.y - r1, lm.x + r1, lm.y + r1, (s) => {
+      if (s.t !== 'bldg' || s.roofType === 'hip' || s.roofType === 'gable' || s.roofType === 'frame') return;
+      const cx = s.x + s.w / 2, cy = s.y + s.d / 2, d = Math.hypot(cx - lm.x, cy - lm.y);
+      if (d < ring[0] || d > r1 || s.w < 7 || s.d < 7) return;
+      if (R && R.at && R.at(cx, cy)) return;
+      const score = s.h - d * 0.04;
+      if (!best || score > best.score) best = { x: cx, y: cy, h: s.h, score, d };
+    });
+    return best;
+  }
+
+  window.STAGE_PREP = function (seg, sh) {
+    CUR_LOW = false;
+    const [hh, mm] = seg.time || [12, 0];
+    if (N.wires) N.wires.draw3d = !sh.noWires; // poles / wires would cut across the monument from these vantages
+    N.debug.setTime(hh, mm);
+    // festival overlays: the finale drives Sankranti / Ramzan itself (per frame); every other shot follows the calendar
+    if (seg.shot === 'finale') { const c0 = sh.clock[0]; N.debug.setTime(Math.floor(c0 / 60), c0 % 60); FIN.kites = null; FIN.ramzan = null; finaleClock(0, sh); }
+    else if (FIN.used) { N.seasons.set('sankranti', null); N.seasons.set('ramzan', null); FIN.used = false; }
+    if (seg.shot === 'rain') { N.weather.force({ rain: 0.95, storm: 0.55 }); N.weather.wet = 1; }
+    else { N.weather.force({ rain: 0, storm: 0, mist: 0 }); N.weather.wet = 0; }
+    N.wind.force(seg.shot === 'rain' ? { strength: 0.85 } : { strength: 0.4 });
+    let lm = lmById(sh.lm), hero = null, base = sh.base != null ? sh.base : 0, lookLm = null;
+    if (sh.lm === 'tank_bund') { const p = N.places.tank_bund || N.places.giver_hussain_sagar; lm = { x: p.x, y: p.y, w: 10, d: 10, h: 10, id: 'tank_bund' }; }
+    if (!lm) throw new Error('no landmark ' + sh.lm);
+    if (sh.hero === 'top') {
+      streamAt(lm.x, lm.y); settle();
+      // the landmark model may build a few frames later (lazy GLBs): wait for a real summit
+      // optionally search a ring for the highest roof (Golconda: the pavilion, not the courtyard)
+      let px = lm.x, py = lm.y;
+      if (sh.summitR) {
+        let bh = -1;
+        for (let rr = 0; rr <= sh.summitR; rr += sh.summitR / 3) for (let k = 0; k < (rr ? 12 : 1); k++) {
+          const xx = lm.x + Math.cos(k * Math.PI / 6) * rr, yy = lm.y + Math.sin(k * Math.PI / 6) * rr, hh2 = STAGE.summit(xx, yy, 0);
+          if (hh2 > bh + 0.5) { bh = hh2; px = xx; py = yy; }
+        }
+      }
+      let h = STAGE.summit(px, py, 0);
+      for (let k = 0; k < 90 && h < (lm.h || 20) * 0.5; k++) { window.__step(1 / FPS); if (k % 10 === 9) settle(); h = STAGE.summit(px, py, 0); }
+      if (h < (lm.h || 20) * 0.5) h = (lm.h || 20) * 1.5;
+      // perch at the roof edge (Spider-Man on a ledge): step out towards the camera side while the roof holds
+      if (sh.edge) {
+        const ex = Math.cos(base), ey = Math.sin(base);
+        for (let d = sh.edge; d > 2; d -= 2) { const h2 = STAGE.summit(px + ex * d, py + ey * d, 0); if (Math.abs(h2 - h) < 0.6) { px += ex * d; py += ey * d; break; } }
+      }
+      hero = { x: px, y: py, h };
+    } else if (sh.hero === 'roof') {
+      const r = sh.street ? null : tallestRoof(lm, sh.ring || [70, 240]);
+      if (r) {
+        streamAt(r.x, r.y); settle();
+        hero = { x: r.x, y: r.y, h: STAGE.summit(r.x, r.y, 0) };
+        base = Math.atan2(r.y - lm.y, r.x - lm.x); lookLm = lm;
+      } else {
+        // no flat roof around (sloped cantonment roofs): Chinnu on the street, a low hero angle up at the landmark
+        const q = N.world.nearestRoadPoint(lm.x + 55, lm.y + 30) || { x: lm.x + 55, y: lm.y + 30 };
+        const fr = N.world.findFree ? N.world.findFree(q.x, q.y, 'walk', 20) : null;
+        const gx = fr ? fr.x : q.x, gy = fr ? fr.y : q.y;
+        streamAt(gx, gy); settle();
+        hero = { x: gx, y: gy, h: Math.max(0, N.view3d.groundHeightAt ? N.view3d.groundHeightAt(gx, gy) : 0) };
+        base = Math.atan2(gy - lm.y, gx - lm.x); lookLm = lm; CUR_LOW = true;
+      }
+    } else if (sh.hero === 'shore' || sh.hero === 'bund') {
+      const q = N.world.nearestRoadPoint(lm.x, lm.y, (rd) => rd.kind === 'bund') || N.world.nearestRoadPoint(lm.x, lm.y);
+      // stand on the parapet on the lake side of the bund
+      const nx = -Math.sin(q.angle), ny = Math.cos(q.angle);
+      let side = 1; if (!N.world.isWater(q.x + nx * 40, q.y + ny * 40)) side = -1;
+      const hw = ((q.road && q.road.w) || 40) / 2;
+      // slide along the bund so no lamp post lines up between the camera and the statue
+      const ux = Math.cos(q.angle), uy = Math.sin(q.angle), slide = sh.slide || 0;
+      const hx = q.x + nx * side * (hw + 3) + ux * slide, hy = q.y + ny * side * (hw + 3) + uy * slide;
+      streamAt(hx, hy); settle();
+      hero = { x: hx, y: hy, h: Math.max(0, STAGE.summit(hx, hy, 0)) };
+      if (sh.hero === 'shore') { base = Math.atan2(hy - lm.y, hx - lm.x); lookLm = lm; }
+      else { // look along the bund: the lamp line and statues recede behind Chinnu, the lake beside
+        const ux2 = Math.cos(q.angle), uy2 = Math.sin(q.angle);
+        base = Math.atan2(-uy2, -ux2) - 0.35 * side; lookLm = { x: hx + ux2 * 260 + nx * side * 40, y: hy + uy2 * 260 + ny * side * 40 };
+      }
+    }
+    // the hidden player stands below, so birds / traffic / rain live around the shot
+    N.debug.teleport(hero.x + 30, hero.y + 30);
+    // no parked / passing vehicles blocking the drone (traffic further away stays)
+    const clearV = () => N.entities.clear((e) => (e.kind === 'vehicle' && Math.hypot(e.x - hero.x, e.y - hero.y) < 90) || ((e.kind === 'ped' || e.kind === 'npc') && e !== N.player && Math.hypot(e.x - hero.x, e.y - hero.y) < 22));
+    clearV(); CUR_CLEAR = clearV;
+    streamAt(hero.x, hero.y);
+    let face = sh.faceLm ? base + Math.PI + 0.45 : sh.face != null ? sh.face : base + 0.55; // faceLm: looking out at the landmark, 3/4 from behind
+    const hs = sh.scale || 1;
+    // reveal: pick the crane's bearing so nothing (minarets, parapets, poles) comes between the lens and Chinnu
+    let rev = null;
+    if (seg.shot === 'reveal') { rev = revealSearch(hero, hs); face = rev.a1 + 0.63; }
+    CUR = { hs, seg, sh, lm, hero, base, lookLm, face, rev, strikes: (seg.lightning || []).map((b) => Math.round((b - seg.b) * B * FPS)) };
+    STAGE.hero({ x: hero.x, y: hero.y, h: hero.h, angle: face, clip: sh.clip || 'idle', scale: hs });
+    pose(0, seg.n * B * FPS);
+    settle();
+    for (let k = 0; k < (window.WARM || 45); k++) { pose(0, seg.n * B * FPS); window.__step(1 / FPS); }
+    settle();
+    return { lm: lm.id, hero: { x: Math.round(hero.x), y: Math.round(hero.y), h: +hero.h.toFixed(1) }, base: +base.toFixed(2), rev };
+  };
+
+  // the reveal crane (from the plaza, low and looking up at the minarets, up to Chinnu on the roof). Height and
+  // distance ease separately: the camera clears the roof line (by ~62% of the shot) while still ~90 u out, and only
+  // then pushes in. rev = {a0, a1}: bearing from the hero at the start / end of the shot.
+  function revealCam(u, hero, rev, hs) {
+    const hy = hero.h, cs = (hs < 1 ? hs * 1.6 : 1) * 1.25, chest = 4.5 * hs;
+    const eh = ease.io(Math.min(1, u / 0.62));
+    const er = u < 0.55 ? 0.35 * ease.io(u / 0.55) : 0.35 + 0.65 * ease.io((u - 0.55) / 0.45);
+    const a = rev.a0 + (rev.a1 - rev.a0) * er;
+    // ends a medium-wide shot on Chinnu (r 20*cs ~ 18 u; it used to stop at 33*cs, where he read as a speck)
+    const r = 125 - (125 - 20 * cs) * er, h = 3 + (hy + 6 * cs - 3) * eh, th = 55 + (hy + chest - 55) * eh;
+    return { x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, th, fov: 50 - 8 * er, r, a, chest };
+  }
+  function revealSearch(hero, hs) {
+    STAGE.solids(true);
+    const chest = 4.5 * hs, A1 = 0.94, SWEEP = 0.35;
+    let best = null;
+    const tested = [];
+    for (let a1 = -Math.PI; a1 < Math.PI; a1 += 0.08) for (const dir of [1, -1]) {
+      const rev = { a0: a1 - dir * SWEEP, a1 };
+      let score = Math.abs(U.angleDiff(a1, A1)) * 1.5, late = 0, early = 0;
+      // above the roof line (u >= 0.5): a "fat" line camera -> Chinnu must be clear (the centre line plus four
+      // lines fanned 3 u sideways / 2 u up-down at the lens), densely sampled so a thin minaret shaft can't slip by
+      for (let k = 0; k <= 23 && (!best || score < best.score); k++) {
+        const u = 0.5 + (0.5 * k) / 23, c = revealCam(u, hero, rev, hs), px = -Math.sin(c.a) * 3, py = Math.cos(c.a) * 3;
+        for (const [ox, oy, oh] of [[0, 0, 0], [px, py, 0], [-px, -py, 0], [0, 0, 2], [0, 0, -2]]) {
+          if (STAGE.blocked(hero.x, hero.y, hero.h + chest, c.x + ox, c.y + oy, c.h + oh, 1.5) >= 0) { score += 10; late++; break; }
+        }
+      }
+      // on the way up: nothing in front of the lens short of the monument itself (stop 40 u before the hero)
+      for (let k = 0; k <= 5 && (!best || score < best.score); k++) {
+        const u = (0.5 * k) / 5, c = revealCam(u, hero, rev, hs);
+        const dx = hero.x - c.x, dy = hero.y - c.y, dh = c.th - c.h, L = Math.hypot(dx, dy, dh), f = Math.max(0, (L - 40) / L);
+        if (STAGE.blocked(c.x, c.y, c.h, c.x + dx * f, c.y + dy * f, c.h + dh * f, 0.5) >= 0) { score += 3; early++; }
+      }
+      tested.push([+a1.toFixed(2), dir, late, early]);
+      if (!best || score < best.score) best = { a0: +rev.a0.toFixed(3), a1: +rev.a1.toFixed(3), score: +score.toFixed(2), late, early };
+    }
+    best.clearCount = tested.filter((t) => !t[2] && !t[3]).length;
+    return best;
+  }
+
+  function pose(f, nf) {
+    const { seg, sh, hero, base, lookLm, hs } = CUR;
+    const u = f / Math.max(1, nf - 1), hy = hero.h, cs = (hs < 1 ? hs * 1.6 : 1) * 1.25; // camera distance scale: wide shots that show the city (user: less zoom)
+    const chest = 4.5 * hs;
+    let lx = hero.x, ly = hero.y;
+    const lk = sh.lookK != null ? sh.lookK : (CUR_LOW ? 0.35 : 0.12);
+    if (lookLm) { lx += (lookLm.x - hero.x) * lk; ly += (lookLm.y - hero.y) * lk; }
+    if (seg.shot === 'finale') {
+      // time-lapse orbit: near-constant angular speed (a soft ease at both ends), slow push-in + descent
+      finaleClock(u, sh);
+      const e = 0.8 * u + 0.2 * ease.io(u), lm = CUR.lm;
+      const a = sh.a[0] + (sh.a[1] - sh.a[0]) * e;
+      const r = sh.r[0] + (sh.r[1] - sh.r[0]) * e, h = sh.h[0] + (sh.h[1] - sh.h[0]) * e;
+      const t = f / FPS, jx = Math.sin(t * 1.1 + 1) * 0.3, jy = Math.cos(t * 0.9) * 0.3;
+      STAGE.cam({ x: lm.x + Math.cos(a) * r + jx, y: lm.y + Math.sin(a) * r + jy, h, tx: lm.x, ty: lm.y, th: hy - 12, fov: sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e });
+      STAGE.camSpec.rollAbs = -0.012 * Math.sin(u * Math.PI);
+    } else if (seg.shot === 'reveal') {
+      const c = revealCam(u, hero, CUR.rev || { a0: 0.59, a1: 0.94 }, hs);
+      STAGE.cam({ x: c.x, y: c.y, h: c.h, tx: hero.x, ty: hero.y, th: c.th, fov: c.fov });
+    } else if (seg.shot === 'whip') {
+      const e = ease.in(u), a = 0.94 + e * 5.2;
+      STAGE.cam({ x: hero.x + Math.cos(a) * 24 * cs, y: hero.y + Math.sin(a) * 24 * cs, h: hy + 8 * cs, tx: hero.x, ty: hero.y, th: hy + chest, fov: 50 + 10 * e });
+    } else if (seg.shot === 'rain') {
+      const e = ease.io(u), a = 0.7 + 1.1 * e;
+      const r = 70 - (70 - 16 * cs) * e, h = hy + 28 - (28 - 7 * cs) * e;
+      STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th: hy + chest, fov: 46 });
+    } else {
+      // drone orbit: launches fast off the cut and settles (ease-out), a wide arc with a crane-up pull-out,
+      // plus a little handheld drift + roll so it never feels locked off
+      const dir = seg.dir || 1, e = ease.out(u), arc = (sh.arc || 1.4) * 1.55;
+      const a = base + dir * (e - 0.45) * arc;
+      const r = (sh.r[0] + (sh.r[1] - sh.r[0]) * e) * cs, h = hy + (sh.h[0] + (sh.h[1] - sh.h[0]) * e) * cs;
+      const fov = sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e;
+      const t = f / FPS, jx = Math.sin(t * 2.3 + 1) * 0.25 + Math.sin(t * 5.1) * 0.08, jy = Math.cos(t * 1.9) * 0.2, jh = Math.sin(t * 2.7 + 2) * 0.18;
+      STAGE.cam({ x: hero.x + Math.cos(a) * r + jx, y: hero.y + Math.sin(a) * r + jy, h: CUR_LOW ? hy + 2.2 + jh : h + jh, tx: lx, ty: ly, th: CUR_LOW ? hy + 22 : hy + chest, fov: CUR_LOW ? fov + 8 : fov, roll: 0 });
+      STAGE.camSpec.rollAbs = dir * (0.05 * (1 - e) + 0.012 * Math.sin(t * 1.3));
+    }
+  }
+
+  window.STAGE_FRAME = function (f, nf, capture) {
+    pose(f, nf);
+    if (CUR_CLEAR && f % 15 === 0) CUR_CLEAR();
+    if (CUR.strikes.includes(f)) { const h = CUR.hero; N.weather.strike(h.x + 260, h.y - 380, 1); }
+    window.__step(1 / FPS);
+    if (!capture) return null;
+    return N.view3d.H.renderer.domElement.toDataURL('image/jpeg', 0.93);
+  };
+})();
