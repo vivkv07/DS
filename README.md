@@ -11,7 +11,7 @@ A top-down open-city adventure for 90s kids, with an optional 3D third/first-per
 The game sends anonymous play stats (no names, nothing you type) to help us improve it; they can be turned off in
 Settings → Privacy.
 
-This branch holds only the built game; the source is in the nostalgia/ folder of the claude/nostalgia-hyderabad-game branch. Build 2026-10-24T06:56Z (source fd0f7c0).
+This branch holds only the built game; the source is in the nostalgia/ folder of the claude/nostalgia-hyderabad-game branch. Build 2026-10-24T08:14Z (source a3e4e2e).
 This is a play-testing build: pocket money is unlimited for now.
 
 ## Credits
