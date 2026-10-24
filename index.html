@@ -745,6 +745,8 @@ body.touch-on .hud-stats { top: calc(56px + var(--safe-t)); right: calc(10px + v
   border-radius: 0 0 4px 4px;
   padding: 1px 5px 0;
 }
+/* a turned (heading-up) minimap: the N badge rides the edge where north lies */
+.hud-minimap .mm-n.turned { transform: translate(-50%, -50%); border-radius: 50%; padding: 2px 5px 1px; font-size: 13px; box-shadow: 0 0 0 2px var(--auto-black); }
 
 /* ---- ask card (retry mission etc.) */
 .hud-ask {
@@ -40590,7 +40592,20 @@ dom.qitem.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPro
 dom.caps = el('div', 'hud-caps', root);
 dom.jcard = el('div', 'hud-jcard', root);
 }
-const MM = { img: null, ppu: 0.2, radius: 380, size: 0, dpr: 1 };
+const MM_KEY = 'nostalgia.minimap.v1', MM_MODES = ['auto', 'north', 'turn'];
+const mmMode0 = (() => { try { return window.localStorage.getItem(MM_KEY); } catch (e) { return null; } })();
+const MM = { img: null, ppu: 0.2, radius: 380, size: 0, dpr: 1, mode: MM_MODES.indexOf(mmMode0) >= 0 ? mmMode0 : 'auto',
+rot: 0, lx: 0, ly: 0, t: 0, turn: null, turnAt: 0, turnPts: null, nRot: null };
+const M_PER_U = 1.6;
+const fmtDist = (u) => { const m = Math.max(0, u) * M_PER_U; return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.max(10, Math.round(m / 10) * 10) + ' m'; };
+const wrapA = (a) => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
+function mmHeading() {
+const V = N.view, three = !!(V && V.is3D && V.is3D());
+if (MM.mode === 'north' || (MM.mode === 'auto' && !three)) return null;
+if (three) return V.yaw;
+const p = N.player, fe = p.vehicle || p;
+return fe.angle || 0;
+}
 function mapImage() {
 if (MM.img) return MM.img;
 if (!N.world.built) return null;
@@ -40620,34 +40635,93 @@ if (t.alive === false) return null;
 if (typeof t.x === 'number') return t;
 return null;
 }
-const route = { key: '', pts: null, t: 0, sx: 0, sy: 0, a: -1, b: -1 };
-const GPS_OPTS = { walk: true, paths: true, costs: { path: 1.15 }, maxExpand: 40000 };
-function astar(a, b) {
+const route = { key: '', pts: null, nodes: null, t: 0, sx: 0, sy: 0, a: -1, b: -1, how: 'walk' };
+const GPS_OPTS = {
+walk: { walk: true, paths: true, costs: { path: 1.15 }, maxExpand: 40000 },
+cycle: { walk: true, paths: false, costs: { lane: 1.1 }, maxExpand: 40000 },
+drive: { walk: false, paths: false, costs: { lane: 1.35, street: 1.1 }, maxExpand: 40000 },
+};
+function routeHow() {
+const v = N.player.vehicle;
+if (!v) return 'walk';
+const T = v.T || {};
+return T.pedal ? 'cycle' : 'drive';
+}
+function astar(a, b, how) {
 if (!a || !b) return null;
-return N.world.roads.route(a, b, GPS_OPTS);
+return N.world.roads.route(a, b, GPS_OPTS[how] || GPS_OPTS.walk);
+}
+function startNode(R, p, how) {
+const a = R.nearestNode(p.x, p.y);
+const v = p.vehicle;
+if (!a || how === 'walk' || !v) return a;
+const hx = Math.cos(v.angle || 0), hy = Math.sin(v.angle || 0);
+if ((a.x - p.x) * hx + (a.y - p.y) * hy >= -4) return a;
+const d0 = Math.hypot(a.x - p.x, a.y - p.y);
+let best = null, bd = Infinity;
+for (const l of a.links) {
+const n = R.nodes[l.to]; if (!n) continue;
+const dx = n.x - p.x, dy = n.y - p.y;
+if (dx * hx + dy * hy <= 0) continue;
+const d = Math.hypot(dx, dy);
+if (d < bd) { bd = d; best = n; }
+}
+return best && bd < d0 * 3 + 60 ? best : a;
 }
 function updateRoute(dt) {
 let target = null;
 for (const b of blips.values()) if (b.route) { const p = blipPos(b); if (p) { target = p; break; } }
-if (!target || !N.world.roads) { route.pts = null; route.key = ''; return; }
+if (!target || !N.world.roads) { route.pts = null; route.nodes = null; route.key = ''; return; }
 route.t -= dt;
-const p = N.player;
+const p = N.player, how = routeHow();
 const moved = Math.hypot(p.x - route.sx, p.y - route.sy) > 40;
-const key = Math.round(target.x / 8) + ',' + Math.round(target.y / 8);
+const key = Math.round(target.x / 8) + ',' + Math.round(target.y / 8) + ',' + how;
 if (key === route.key && route.t > 0 && !moved) return;
-route.key = key; route.t = 1.2; route.sx = p.x; route.sy = p.y;
+route.key = key; route.t = 1.2; route.sx = p.x; route.sy = p.y; route.how = how;
 const direct = Math.hypot(target.x - p.x, target.y - p.y);
-if (direct < 120) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
+if (direct < 120) { route.pts = [[p.x, p.y], [target.x, target.y]]; route.nodes = null; return; }
 const R = N.world.roads;
-const a = R.nearestNode(p.x, p.y), b = R.nearestNode(target.x, target.y);
+const a = startNode(R, p, how), b = R.nearestNode(target.x, target.y);
 if (a && b && route.pts && route.pts.length > 2 && route.a === a.id && route.b === b.id) { route.pts[0] = [p.x, p.y]; route.pts[route.pts.length - 1] = [target.x, target.y]; return; }
 route.a = a ? a.id : -1; route.b = b ? b.id : -1;
-const path = astar(a, b);
-if (!path) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
+const path = astar(a, b, how) || (how !== 'walk' ? astar(a, b, 'walk') : null);
+if (!path) { route.pts = [[p.x, p.y], [target.x, target.y]]; route.nodes = null; return; }
 const pts = [[p.x, p.y]];
 for (const n of path) pts.push([n.x, n.y]);
 pts.push([target.x, target.y]);
-route.pts = pts;
+route.pts = pts; route.nodes = path;
+}
+function nextTurn() {
+const P = route.pts, nodes = route.nodes, p = N.player;
+if (!P || P.length < 2) return null;
+const acc = [0];
+for (let i = 1; i < P.length; i++) acc.push(acc[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+const at = (s) => {
+s = U.clamp(s, 0, acc[acc.length - 1]);
+let i = 1; while (i < acc.length - 1 && acc[i] < s) i++;
+const t = (s - acc[i - 1]) / Math.max(1e-6, acc[i] - acc[i - 1]);
+return [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * t, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * t];
+};
+const v = p.vehicle;
+if (v && acc[acc.length - 1] > 30) {
+const q = at(20), hx = Math.cos(v.angle || 0), hy = Math.sin(v.angle || 0), dx = q[0] - p.x, dy = q[1] - p.y, l = Math.hypot(dx, dy) || 1;
+if ((dx * hx + dy * hy) / l < -0.5) return { dir: 'back', d: 0, road: null };
+}
+if (!nodes) return null;
+const R = N.world.roads;
+for (let k = 0; k < nodes.length - 1; k++) {
+const n = nodes[k], i = k + 1;
+if (acc[i] > 1600) break;
+if ((n.deg || 0) < 3 || acc[i] < 4) continue;
+const a = at(acc[i] - 14), b = at(acc[i] + 14);
+const turn = wrapA(Math.atan2(b[1] - n.y, b[0] - n.x) - Math.atan2(n.y - a[1], n.x - a[0]));
+if (Math.abs(turn) < 0.6) continue;
+let road = null;
+const nx = nodes[k + 1];
+if (nx && R && R.edges) for (const l of n.links.concat((n.inc || []).map((e) => ({ edge: e })))) { const e = R.edges[l.edge]; if (e && ((e.a === n.id && e.b === nx.id) || (e.b === n.id && e.a === nx.id))) { road = e.road && e.road.name || null; break; } }
+return { dir: Math.abs(turn) > 2.6 ? 'back' : turn > 0 ? 'right' : 'left', d: acc[i], road };
+}
+return null;
 }
 function drawMinimap() {
 const c = dom.mmCanvas, g = dom.mmCtx;
@@ -40656,19 +40730,27 @@ const S = MM.size, img = mapImage();
 const p = N.player;
 const fe = (p.vehicle || p);
 const sp = Math.hypot(fe.vx || 0, fe.vy || 0);
+const now = N.time.real || 0, dt = U.clamp(now - (MM.t || now), 0, 0.1); MM.t = now;
 MM.radius += (U.lerp(360, 620, U.smooth((sp - 50) / 120)) - MM.radius) * 0.04;
 const Rw = MM.radius;
 const scale = S / (2 * Rw);
 const cx = S / 2, cy = S / 2;
-const toX = (x) => cx + (x - p.x) * scale, toY = (y) => cy + (y - p.y) * scale;
+const hd = mmHeading(), rotT = hd == null ? 0 : -Math.PI / 2 - hd;
+MM.rot = wrapA(MM.rot + wrapA(rotT - MM.rot) * (1 - Math.exp(-dt * 10)));
+const la = Rw * 0.3 * U.smooth((sp - 15) / 90), lk = 1 - Math.exp(-dt * 2.5);
+MM.lx += ((sp > 1 ? (fe.vx / sp) * la : 0) - MM.lx) * lk; MM.ly += ((sp > 1 ? (fe.vy / sp) * la : 0) - MM.ly) * lk;
+const ox = p.x + MM.lx, oy = p.y + MM.ly, rc = Math.cos(MM.rot), rs = Math.sin(MM.rot);
+const toX = (x, y) => cx + ((x - ox) * rc - (y - oy) * rs) * scale, toY = (x, y) => cy + ((x - ox) * rs + (y - oy) * rc) * scale;
 g.setTransform(1, 0, 0, 1, 0, 0);
 g.globalAlpha = 1;
 g.fillStyle = '#1d1622'; g.fillRect(0, 0, S, S);
 if (img) {
-const ppu = MM.ppu;
-const sx = (p.x - Rw) * ppu, sy = (p.y - Rw) * ppu, sw = 2 * Rw * ppu;
+const ppu = MM.ppu, R2 = Rw * (Math.abs(MM.rot) > 1e-3 ? 1.42 : 1);
+const sx = (ox - R2) * ppu, sy = (oy - R2) * ppu, sw = 2 * R2 * ppu, dw = 2 * R2 * scale;
 g.imageSmoothingEnabled = true;
-g.drawImage(img, sx, sy, sw, sw, 0, 0, S, S);
+g.save(); g.translate(cx, cy); g.rotate(MM.rot);
+g.drawImage(img, sx, sy, sw, sw, -dw / 2, -dw / 2, dw, dw);
+g.restore();
 }
 if (state.circles.size) {
 g.save();
@@ -40676,25 +40758,26 @@ g.setLineDash([Math.max(3, S * 0.03), Math.max(3, S * 0.025)]);
 for (const ci of state.circles.values()) {
 const cr = ci.r * scale;
 g.lineWidth = Math.max(3, S * 0.022); g.strokeStyle = 'rgba(20,10,30,0.6)';
-g.beginPath(); g.arc(toX(ci.x), toY(ci.y), cr, 0, TAU); g.stroke();
+g.beginPath(); g.arc(toX(ci.x, ci.y), toY(ci.x, ci.y), cr, 0, TAU); g.stroke();
 g.lineWidth = Math.max(1.5, S * 0.012); g.strokeStyle = ci.color || '#f2c230';
-g.beginPath(); g.arc(toX(ci.x), toY(ci.y), cr, 0, TAU); g.stroke();
+g.beginPath(); g.arc(toX(ci.x, ci.y), toY(ci.x, ci.y), cr, 0, TAU); g.stroke();
 }
 g.restore();
 }
 if (route.pts && route.pts.length > 1) {
+const wk = p.vehicle ? 1.35 : 1;
 g.lineJoin = 'round'; g.lineCap = 'round';
 g.beginPath();
-route.pts.forEach((q, i) => { if (i) g.lineTo(toX(q[0]), toY(q[1])); else g.moveTo(toX(q[0]), toY(q[1])); });
-g.strokeStyle = 'rgba(20,10,30,0.55)'; g.lineWidth = Math.max(4, S * 0.032); g.stroke();
-g.strokeStyle = blipColor('#ff5fb0'); g.lineWidth = Math.max(2, S * 0.018); g.stroke();
+route.pts.forEach((q, i) => { if (i) g.lineTo(toX(q[0], q[1]), toY(q[0], q[1])); else g.moveTo(toX(q[0], q[1]), toY(q[0], q[1])); });
+g.strokeStyle = 'rgba(20,10,30,0.55)'; g.lineWidth = Math.max(4, S * 0.032 * wk); g.stroke();
+g.strokeStyle = blipColor('#ff5fb0'); g.lineWidth = Math.max(2, S * 0.018 * wk); g.stroke();
 }
 const t = N.time.real;
 const edge = S / 2 - S * 0.07;
 for (const b of blips.values()) {
 if (b.minimap === false) continue;
 const q = blipPos(b); if (!q) continue;
-let X = toX(q.x), Y = toY(q.y);
+let X = toX(q.x, q.y), Y = toY(q.x, q.y);
 const dx = X - cx, dy = Y - cy, d = Math.max(Math.abs(dx), Math.abs(dy));
 const out = d > edge;
 if (out) { if (b.edge === false) continue; X = cx + (dx / d) * edge; Y = cy + (dy / d) * edge; }
@@ -40717,13 +40800,18 @@ continue;
 }
 drawIcon(g, b.icon, X, Y, r, col);
 }
-g.save(); g.translate(cx, cy); g.rotate(fe.angle || 0);
+g.save(); g.translate(toX(p.x, p.y), toY(p.x, p.y)); g.rotate((fe.angle || 0) + MM.rot);
 const pr = Math.max(4, S * 0.045);
 g.fillStyle = '#120d16';
 g.beginPath(); g.moveTo(pr * 1.5, 0); g.lineTo(-pr, -pr * 1.05); g.lineTo(-pr * 0.45, 0); g.lineTo(-pr, pr * 1.05); g.closePath(); g.fill();
 g.fillStyle = '#fff4cf';
 g.beginPath(); g.moveTo(pr * 1.05, 0); g.lineTo(-pr * 0.62, -pr * 0.7); g.lineTo(-pr * 0.25, 0); g.lineTo(-pr * 0.62, pr * 0.7); g.closePath(); g.fill();
 g.restore();
+if (!route.pts) MM.turn = null;
+else if (now - (MM.turnAt || 0) > 0.25 || MM.turnPts !== route.pts || now < MM.turnAt) { MM.turn = nextTurn(); MM.turnAt = now; MM.turnPts = route.pts; }
+const nt = MM.turn;
+if (nt && (nt.dir === 'back' || nt.d < 900)) drawTurnChip(g, S, nt);
+placeNorth();
 if (!MM.scan || MM.scan.width !== S) {
 MM.scan = N.render.makeCanvas(S, S);
 const sg = MM.scan.getContext('2d');
@@ -40731,6 +40819,43 @@ sg.fillStyle = 'rgba(0,0,0,0.12)';
 for (let y = 0; y < S; y += 3) sg.fillRect(0, y, S, 1);
 }
 g.drawImage(MM.scan, 0, 0);
+}
+function drawTurnChip(g, S, nt) {
+const h = Math.round(S * 0.17), y0 = S - h - Math.round(S * 0.04), fs = Math.round(h * 0.56);
+const txt = nt.dir === 'back' ? 'Turn round' : fmtDist(nt.d) + (nt.road && S >= 200 ? ' · ' + nt.road : '');
+g.font = '700 ' + fs + "px 'Baloo 2', system-ui, sans-serif";
+let tw = g.measureText(txt).width;
+const maxW = S - Math.round(S * 0.08) - h * 1.25;
+let shown = txt;
+if (tw > maxW) { shown = fmtDist(nt.d); tw = g.measureText(shown).width; }
+const w = Math.min(S - Math.round(S * 0.06), h * 1.15 + tw + h * 0.35), x0 = Math.round((S - w) / 2);
+g.save();
+g.globalAlpha = 0.92; g.fillStyle = '#120d16';
+g.beginPath(); if (g.roundRect) g.roundRect(x0, y0, w, h, h * 0.3); else g.rect(x0, y0, w, h); g.fill();
+g.globalAlpha = 1;
+const ax = x0 + h * 0.58, ay = y0 + h * 0.5, a = h * 0.3;
+g.strokeStyle = '#ffd23f'; g.fillStyle = '#ffd23f'; g.lineWidth = Math.max(2, h * 0.13); g.lineCap = 'round'; g.lineJoin = 'round';
+g.beginPath();
+if (nt.dir === 'back') { g.moveTo(ax + a * 0.55, ay + a); g.lineTo(ax + a * 0.55, ay - a * 0.2); g.arc(ax, ay - a * 0.2, a * 0.55, 0, Math.PI, true); g.lineTo(ax - a * 0.55, ay + a * 0.25); g.stroke(); g.beginPath(); g.moveTo(ax - a * 0.55 - a * 0.45, ay + a * 0.05); g.lineTo(ax - a * 0.55, ay + a * 0.65); g.lineTo(ax - a * 0.55 + a * 0.45, ay + a * 0.05); g.closePath(); g.fill(); }
+else {
+const sd = nt.dir === 'right' ? 1 : -1;
+g.moveTo(ax - sd * a * 0.45, ay + a); g.lineTo(ax - sd * a * 0.45, ay - a * 0.15); g.lineTo(ax + sd * a * 0.45, ay - a * 0.15); g.stroke();
+g.beginPath(); g.moveTo(ax + sd * a * 1.0, ay - a * 0.15); g.lineTo(ax + sd * a * 0.38, ay - a * 0.65); g.lineTo(ax + sd * a * 0.38, ay + a * 0.35); g.closePath(); g.fill();
+}
+g.fillStyle = '#fff4cf'; g.textBaseline = 'middle'; g.textAlign = 'left';
+g.fillText(shown, x0 + h * 1.15, y0 + h * 0.54);
+g.restore();
+}
+function placeNorth() {
+const n = dom.mm && dom.mm.querySelector('.mm-n');
+if (!n) return;
+const r = Math.round(MM.rot * 100) / 100;
+if (r === MM.nRot) return;
+MM.nRot = r;
+if (Math.abs(MM.rot) < 0.02) { n.classList.remove('turned'); n.style.left = ''; n.style.top = ''; return; }
+const sx = Math.sin(MM.rot), sy = -Math.cos(MM.rot), k = 0.42 / Math.max(Math.abs(sx), Math.abs(sy));
+n.classList.add('turned');
+n.style.left = (50 + sx * k * 100).toFixed(1) + '%'; n.style.top = (50 + sy * k * 100).toFixed(1) + '%';
 }
 function drawIcon(g, icon, X, Y, r, col) {
 g.lineWidth = Math.max(1.2, r * 0.35);
@@ -41115,6 +41240,11 @@ return id;
 unblip(id) { blips.delete(id); },
 blipPos,
 route: () => route.pts,
+minimap: {
+get mode() { return MM.mode; },
+setMode(m) { if (MM_MODES.indexOf(m) < 0) return MM.mode; MM.mode = m; try { window.localStorage.setItem(MM_KEY, m); } catch (e) { } return m; },
+state: () => ({ mode: MM.mode, rot: MM.rot, look: [MM.lx, MM.ly], radius: MM.radius, route: route.how, turn: MM.turn }),
+},
 districtBanner(name, sub) {
 if (!dom.district || !name) return;
 if (state.bannerCur || state.jc || (dom.ask && dom.ask.classList.contains('show'))) { state.distPending = { name, sub, t: N.time.real || 0 }; return; }
@@ -41164,9 +41294,20 @@ N.on('game:new', () => { state.dateDay = -1; state.district = null; state.distCa
 N.on('caption', (d) => { if (d && d.text) addCaption(d.text, d); });
 N.on('game:continue', () => { state.dateDay = -1; state.district = null; state.wanted = -1; state.money = null; });
 N.on('game:quit', () => { H.objective(null); H.timer(null); H.clearBanners(); H.closeAsk(); });
+function minimapRow() {
+try {
+if (N.menus && N.menus.addSettingsRow) N.menus.addSettingsRow({
+id: 'minimap', label: 'Minimap', type: 'seg', section: 'Screen',
+opts: [['auto', 'Auto'], ['north', 'North up'], ['turn', 'Turns with you']],
+help: 'Auto: in the 3D views the map turns with the camera, so the road ahead is always up (top-down: north up, like the screen). Moving, it shows more of the road ahead; riding, the pink route starts from the junction ahead, keeps to the bigger roads and shows the next turn.',
+get: () => MM.mode, set: (v) => { H.minimap.setMode(v); },
+});
+} catch (e) { N.err('hud.minimapRow', e); }
+}
+N.on('boot', minimapRow);
 N.addSystem({
 id: 'hud', order: 80, runIn: ['*'],
-init() { build(); sizeMinimap(); },
+init() { build(); sizeMinimap(); minimapRow(); },
 update(dt) {
 const m = N.state.mode;
 if (m === 'boot' || m === 'title') return;
@@ -93940,10 +94081,13 @@ const FS_AO = [
 '  float d = texture2D(tDepth, vUv).x;',
 '  if (d >= 0.99999) { gl_FragColor = vec4(1.0); return; }',
 '  vec3 p = vpos(vUv);',
-'  vec2 o = uTexel * 2.0;',
+'  vec2 o = uTexel * 2.0, o8 = uTexel * 8.0;',
 '  vec3 pr = vpos(vUv + vec2(o.x, 0.0)), pl = vpos(vUv - vec2(o.x, 0.0)), pu = vpos(vUv + vec2(0.0, o.y)), pd = vpos(vUv - vec2(0.0, o.y));',
 '  vec3 dx = abs(pr.z - p.z) < abs(p.z - pl.z) ? pr - p : p - pl;',
 '  vec3 dy = abs(pu.z - p.z) < abs(p.z - pd.z) ? pu - p : p - pd;',
+'  vec3 wr = vpos(vUv + vec2(o8.x, 0.0)) - p, wl = p - vpos(vUv - vec2(o8.x, 0.0)), wu = vpos(vUv + vec2(0.0, o8.y)) - p, wd = p - vpos(vUv - vec2(0.0, o8.y));',
+'  if (length(wr - wl) < 0.5 * length(wr + wl)) dx = wr + wl;',
+'  if (length(wu - wd) < 0.5 * length(wu + wd)) dy = wu + wd;',
 '  vec3 n = normalize(cross(dx, dy));',
 '  if (dot(n, p) > 0.0) n = -n;',
 '  float z = -p.z;',
@@ -94146,6 +94290,7 @@ PP.sz = new T.Vector2();
 const caps = r.capabilities, ex = r.extensions;
 PP.half = caps.isWebGL2 ? !!ex.get('EXT_color_buffer_float') : !!(ex.has('OES_texture_half_float') && ex.has('EXT_color_buffer_half_float'));
 PP.ao = caps.isWebGL2 || ex.has('WEBGL_depth_texture');
+PP.fdepth = caps.isWebGL2;
 PP.built = true;
 }
 function freeTargets() {
@@ -94163,7 +94308,7 @@ t.texture.generateMipmaps = false;
 return t;
 };
 const R = { mips: [] };
-if (PP.ao) { const dt = new T.DepthTexture(w, h); dt.type = T.UnsignedIntType; R.scene = mk(w, h, { depthBuffer: true, depthTexture: dt }); } else R.scene = mk(w, h, { depthBuffer: true });
+if (PP.ao) { const dt = new T.DepthTexture(w, h); dt.type = PP.fdepth ? T.FloatType : T.UnsignedIntType; R.scene = mk(w, h, { depthBuffer: true, depthTexture: dt }); } else R.scene = mk(w, h, { depthBuffer: true });
 R.scene.isXRRenderTarget = true;
 R.scene.texture.encoding = T.sRGBEncoding;
 R.scene.texture.internalFormat = PP.half ? 'RGBA16F' : 'RGBA8';
