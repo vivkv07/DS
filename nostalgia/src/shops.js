@@ -15,6 +15,7 @@
  *       respected unless force; free = no charge). Food is eaten, carry items go to N.player.items.
  *   N.shops.quickOrder(placeId) -> result   the ★ house item (also: hold ACTION 0.5 s at the shop)
  *   N.shops.defs {placeId: def}  kindOf(id)  resolve(id) -> canonical id  list(kind?) -> [ids]
+ *   N.shops.rebuild()  the shops again from the places (a module that adds shop places after the build: paan.js)
  *   N.shops.KINDS (catalogue), N.shops.PRICES {kind: {itemId: paise}}, N.shops.TUNE
  *   N.shops.status(id, minutes?) -> {open, reason, opens, closes, text}   isOpenNow(id)
  *   N.shops.hours(id) -> [[open, close], ...] (minutes)   hoursText(id) -> 'Open 05:00–23:30' (map cards)
@@ -2770,6 +2771,8 @@
     open: (id, o) => openShop(id, o), close: () => closeShop(), isOpen: () => UI.open,
     get current() { return UI.open && UI.def ? { id: UI.def.id, kind: UI.def.kind, name: UI.def.name, view: UI.view ? UI.view.type : 'list' } : null; },
     buy, quickOrder, resolve, kindOf: (id) => { const d = defOf(id); return d ? d.kind : null; },
+    /** rebuild the shops from the places (a module that adds places of a shop kind after 'world:built': paan.js) */
+    rebuild: () => { try { build(); } catch (e) { N.err('shops.build', e); } },
     list: (kind) => Object.keys(defs).filter((id) => !kind || defs[id].kind === kind),
     rows: (id) => { const d = defOf(id); return d ? visibleItems(ctxOf(d), rowsOf(d)).map((it) => ({ id: it.row.id, name: plain(val(it.row.name, ctxOf(d))), price: priceOf(ctxOf(d), it.row), why: it.why ? plain(it.why) : null, house: !!it.row.house })) : []; },
     status: (id, m) => { const d = defOf(id); return d ? statusOf(d, m) : null; },

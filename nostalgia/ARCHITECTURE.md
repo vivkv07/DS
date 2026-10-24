@@ -152,6 +152,17 @@ nostalgia/
                     relaxed). traffic.js speed planning eases off before one (limitAhead). Event
                     'vehicle:breaker' (story.js / story2.js / sidejobs.js cargo meters) -> N.breakers
                     (tests/breakers.cjs)
+  src/paan.js       (after breakers.js) paan shops, 2003: on 'world:built' (deterministic) a painted kiosk beside
+                    every Irani café, bakery, chai bandi, restaurant, food place and Banjara / Jubilee coffee bar
+                    (hills.js): open ground 12-34 u from the café, its counter facing the nearest road 6-18 u back
+                    from the kerb (a looser second look for tight corners), solid on the grid (its turned footprint).
+                    Each is an N.shops shop (kind 'paan_shop', places paan_<n> added to N.places and the world
+                    data's places, then N.shops.rebuild(): meetha paan ★ ₹4, saunf, goli soda, toffees, gum; no
+                    tobacco; 09:00-23:30), a traffic.js crowd zone (zones.paan_shop: men standing about), a
+                    paan-wala (N.npcs paanwala_1..4, noWorld, behind the counter while open and near) and a
+                    `t:'custom'` structure (2D kiosk + striped roof + leaf + stains; 3D kiosk, counter things,
+                    sachet strings, bulb (glow + lamp), the board with its painted name: a CanvasTexture plane
+                    returned in world coordinates) -> N.paan (tests/paan.cjs)
   src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
                     every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
