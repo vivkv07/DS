@@ -75,7 +75,10 @@ nostalgia/
                     passenger who walks about the moving bus in its own frame, sways when it brakes, sits in any
                     free seat or stands, and goes down the stairs to get off; passengers come and go at stops;
                     system 'decker' (order 31, after vehicles) -> N.decker (tests/decker.cjs)
-  src/traffic.js    ambient traffic, pedestrians, cows, dogs, pigeons -> N.traffic
+  src/traffic.js    ambient traffic, pedestrians, cows, dogs, pigeons -> N.traffic. How many and where follow a
+                    busyness grid (busyAt: district style + places + main roads; caps 44 vehicles / 90 people on
+                    desktop); spawns out of sight (top-down off screen; 3D inside the drawing range where the
+                    camera is not looking), gone beyond it (tests/busy_streets.cjs)
   src/npcs.js       named story NPCs, portraits, talk prompts -> N.npcs
   src/wanted.js     the Chappal Meter (wanted level) + pursuers -> N.wanted
   src/hud.js        DOM HUD, minimap, blips, toasts, objective text, district banner -> N.hud

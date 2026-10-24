@@ -25,12 +25,18 @@
  *    foot pursuers), goats in the old city, pigeon flocks that burst into flight (systems §11.3) — plus
  *    horn-scaring for the landmark flocks at Charminar / Mecca Masjid / Gulzar Houz (N.landmarks.flocks).
  *  - CONSTABLES on the podium junctions (N.world.podiums), whistling and directing the two axes.
- * Caps (TUNE.caps): desktop 28 vehicles / 45 peds / 12 animals, touch devices 20 / 32 / 9. Spawns happen
- * just outside the view, at most 2 per frame (8 right after a teleport), despawn out of view and far away.
+ * Caps (TUNE.caps): desktop 44 vehicles / 90 peds / 12 animals, touch devices 26 / 52 / 9 (2003 Hyderabad is never
+ * empty). How many and where follow a BUSYNESS grid (busyAt: the district style's level + a bump round every market,
+ * station, junction, cinema, temple, café, cart, bus stop... + the main roads), sampled round the camera for the
+ * targets (the whole cap only at the busiest corners' busiest hours: TUNE.busy.full), and taken as the odds a spawn
+ * spot is used (the busier spots fill first). Spawns happen out of sight, at
+ * most 2 per frame (8 right after a teleport), and go far away: top-down just off the screen; in 3D inside the
+ * drawing range (actorDist) wherever the camera is not looking, gone beyond it (TUNE.ring3d / gone3d).
  *
  * API  N.traffic = {
  *   enabled (false: no new spawns; clear() removes what exists), density (0..2 multiplier), setDensity(d),
- *   clear(pred?), TUNE, stats() -> {vehicles, peds, animals, flocks, ms}, vehicles [], peds [], animals [],
+ *   clear(pred?), TUNE, stats() -> {vehicles, peds, animals, flocks, targets, busy, ms}, busyAt(x, y) -> {ped, veh},
+ *   unseen(x, y, m) (out of the player's sight: the spawn rule), vehicles [], peds [], animals [],
  *   constables [] (podium actors; wanted.js uses them as spotters), claimAuto(x, y, r) -> an empty ambient
  *   auto released from traffic control (shops.js "AUTO!"), release(v) (stop controlling a vehicle),
  *   busAt(x, y, r) -> a bus stopped at a stop near (x, y) | null, spawnVehicle(type, {x, y, angle?, to?} | null),
@@ -72,11 +78,12 @@
 
   /* ================================================================ tuning (systems §3.4, §11) */
   const TUNE = {
-    caps: { desk: { veh: 28, ped: 45, ani: 12, flocks: 4 }, mobile: { veh: 20, ped: 32, ani: 9, flocks: 3 } },
+    // (2003 Hyderabad's streets are never empty: raised from 28 / 45 and 20 / 32; the busyness grid below spreads them)
+    caps: { desk: { veh: 44, ped: 90, ani: 12, flocks: 4 }, mobile: { veh: 26, ped: 52, ani: 9, flocks: 3 } },
     // share of the vehicle cap by district style (systems §3.4 day targets 18/14/14/12/12/10/6/6, market = 1)
-    vehStyle: { market: 1, oldcity: 0.8, colonial: 0.8, colony: 0.68, cantonment: 0.68, posh: 0.56, hitec: 0.38, rocky: 0.36, osmania: 0.5 },
+    vehStyle: { market: 1, oldcity: 0.9, colonial: 0.85, colony: 0.75, cantonment: 0.72, posh: 0.62, hitec: 0.5, rocky: 0.42, osmania: 0.6 },
     // share of the ped cap (systems §11.2: 34/30/18/16/14/8/6/5, old city = 1)
-    pedStyle: { oldcity: 1, market: 0.9, colony: 0.56, cantonment: 0.5, colonial: 0.44, posh: 0.26, hitec: 0.2, rocky: 0.18, osmania: 0.5 },
+    pedStyle: { oldcity: 1, market: 0.95, colony: 0.72, cantonment: 0.6, colonial: 0.6, posh: 0.4, hitec: 0.34, rocky: 0.28, osmania: 0.66 },
     mix: {
       colony: { cycle: 22, ladiescycle: 8, luna: 10, chetak: 16, rx100: 6, auto: 18, ambassador: 4, maruti800: 8, padmini: 3, bus: 4, lorry: 1, rickshaw: 2 },
       market: { cycle: 12, ladiescycle: 4, luna: 6, chetak: 14, rx100: 6, auto: 26, ambassador: 6, maruti800: 8, padmini: 4, bus: 10, lorry: 4, rickshaw: 4 },
@@ -107,7 +114,24 @@
     // respect zones (systems §4.8): no horns within respectR of one, and traffic slows to respectCruise
     respectR: 40, respectCruise: 40,
     // spawn rings are offsets beyond the view's half-diagonal; despawn needs out-of-view AND beyond these
-    ringPed: [20, 170], ringVeh: [30, 210], ringAni: [24, 220], despawnPed: 330, despawnVeh: 440, despawnAni: 380,
+    ringPed: [16, 130], ringVeh: [30, 200], ringAni: [24, 200], despawnPed: 240, despawnVeh: 360, despawnAni: 320,
+    // 3D: spawns inside the drawing range (actorDist) where the camera is not looking: [from u, to x actorDist];
+    // gone beyond actorDist + these
+    ring3d: { ped: [30, 0.9], veh: [70, 0.95], ani: [40, 0.9] }, gone3d: { ped: 50, veh: 90, ani: 60 },
+    // how busy each spot is (see busyAt): place kind -> [people, traffic, radius u]; main roads -> [people, traffic];
+    // full: the busyness x time of day that asks for the whole cap (only the busiest corners at their busiest hour)
+    busy: {
+      G: 160, min: 0.22, max: 1.75, full: { ped: 1.15, veh: 1.25 },
+      places: {
+        market: [0.9, 0.5, 280], transport: [0.9, 0.7, 320], plaza: [0.9, 0.3, 280], festival: [0.4, 0.2, 260], junction: [0.35, 0.6, 240],
+        bus_stop: [0.35, 0.25, 130], cinema: [0.5, 0.35, 220], landmark: [0.25, 0.25, 220], school: [0.3, 0.15, 150],
+        temple: [0.35, 0.15, 170], mosque: [0.3, 0.12, 150], dargah: [0.3, 0.1, 130], church: [0.2, 0.08, 120],
+        irani_cafe: [0.3, 0.12, 120], restaurant: [0.3, 0.2, 130], food: [0.4, 0.15, 130], bakery: [0.2, 0.08, 100], iyengar_bakery: [0.15, 0.05, 90],
+        kirana: [0.12, 0.04, 80], chai_bandi: [0.18, 0.05, 80], samosa_bandi: [0.15, 0.04, 70], dosa_bandi: [0.12, 0.04, 70], paan_shop: [0.12, 0, 60],
+        medical_shop: [0.1, 0.05, 70], std_booth: [0.08, 0.03, 60], park: [0.25, 0, 200], playground: [0.15, 0, 120], museum: [0.2, 0.1, 160], jetty: [0.3, 0, 120],
+      },
+      roads: { arterial: [0.12, 0.32], bund: [0.1, 0.25], street: [0.06, 0.12], bridge: [0.04, 0.2] },
+    },
     spawnPerFrame: 2, fillPerFrame: 8, fillSecs: 0.9,
     // crowd zones: place kind / id -> {n: max wanderers, r, hours [from, to] (minutes), roles}
     zones: {
@@ -121,6 +145,11 @@
       food: { n: 7, r: 30, hours: [11 * 60, 23 * 60], roles: { youth: 2, man: 2, aunty: 2, kid: 2, student: 2 } },
       plaza: { n: 12, r: 64, hours: [6 * 60, 23 * 60 + 30], roles: { man: 3, woman: 2, elder: 2, kid: 2, youth: 2, aunty: 1, vendor: 1 } },
       irani_cafe: { n: 3, r: 18, hours: [5 * 60, 23 * 60 + 30], roles: { man: 3, uncle: 2, old: 1, youth: 2 } },
+      // people standing about at the carts and counters (a glass of chai, the samosas, the kirana's queue, a call home)
+      chai_bandi: { n: 4, r: 12, hours: [6 * 60, 22 * 60], roles: { man: 3, uncle: 2, youth: 2, old: 1 } },
+      samosa_bandi: { n: 4, r: 12, hours: [16 * 60, 20 * 60 + 30], roles: { kid: 2, student: 2, man: 2, aunty: 1 } },
+      kirana: { n: 2, r: 12, hours: [7 * 60, 22 * 60 + 30], roles: { aunty: 3, kid: 1, man: 1, uncle: 1 } },
+      std_booth: { n: 2, r: 10, hours: [8 * 60, 22 * 60 + 30], roles: { man: 2, student: 1, aunty: 1 } },
       school: { n: 10, r: 34, hours: [7 * 60 + 30, 9 * 60], hours2: [15 * 60 + 30, 17 * 60], roles: { student: 10, aunty: 1 } },
       playground: { n: 6, r: 30, hours: [16 * 60, 18 * 60 + 45], roles: { kid: 6, student: 2 } },
       osmania_university: { n: 10, r: 80, hours: [8 * 60, 18 * 60], roles: { college: 8, man: 1 } },
@@ -176,6 +205,120 @@
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || {}); } catch (e) { /* audio never breaks traffic */ } }
   function viewR() { const v = N.render.view; return Math.hypot(v.x1 - v.x0, v.y1 - v.y0) / 2; }
   function camC() { const v = N.render.view; return { x: (v.x0 + v.x1) / 2, y: (v.y0 + v.y1) / 2 }; }
+  // ---- out of sight, for spawning and despawning (top-down: the screen; 3D: the camera's ground cone)
+  // In 3D the core's R.view is a ~1080 u square round him (inView means "near the player" there) while the actors are
+  // drawn only to actorDist (~620 u): spawning outside the square put new people beyond the drawing range (walking
+  // in for seconds) and kept many alive out there unseen. In 3D things spawn inside the drawing range wherever the
+  // camera is not looking, and go once beyond it.
+  const CONE = { x: 0, y: 0, cx: 1, cy: 0, cos: 0.5, far: 620, t: -1 };
+  function cone3() {
+    const V = N.view;
+    if (!V || !V.is3D || !V.is3D()) return null;
+    const E = N.view3d && N.view3d.engine, c = E && E.camera;
+    if (!c) return null;
+    const t = (N.time && N.time.real) || 0;
+    if (CONE.t === t) return CONE;
+    const Q = (N.view3d && N.view3d.quality) || {};
+    const half = Math.atan(Math.tan(((c.fov || 60) * Math.PI) / 360) * (c.aspect || 1.78)) + 0.35;
+    CONE.x = c.position.x; CONE.y = c.position.z; CONE.cx = Math.cos(V.yaw || 0); CONE.cy = Math.sin(V.yaw || 0);
+    CONE.cos = Math.cos(Math.min(half, Math.PI * 0.95)); CONE.far = Q.actorDist || 620; CONE.t = t;
+    return CONE;
+  }
+  /** Could the player see (x, y) (margin m u)? Top-down: on screen; 3D: in the camera's cone within the drawing range. */
+  function seen(x, y, m) {
+    const C = cone3();
+    if (!C) return N.render.inView(x, y, m || 0);
+    const mm = m || 0, dx = x - C.x, dy = y - C.y, d = Math.hypot(dx, dy);
+    if (d < 18 + mm) return true;
+    if (d > C.far + mm) return false;
+    return (dx * C.cx + dy * C.cy) / d > C.cos - mm / Math.max(d, 1);
+  }
+  /** the spawn ring [r0, r1] round camC() for 'ped' | 'veh' | 'ani' */
+  function ringFor(kind) {
+    const C = cone3();
+    if (C) { const R = TUNE.ring3d[kind]; return [R[0], C.far * R[1]]; }
+    const vr = viewR(), R = kind === 'veh' ? TUNE.ringVeh : kind === 'ani' ? TUNE.ringAni : TUNE.ringPed;
+    return [vr + R[0], vr + R[1]];
+  }
+  /** far enough to go: 3D beyond the drawing range (never drawn there); top-down off screen and beyond the ring */
+  function goneFrom(e, c, kind) {
+    const C = cone3(), d = Math.hypot(e.x - c.x, e.y - c.y);
+    if (C) return d > C.far + TUNE.gone3d[kind];
+    const des = kind === 'veh' ? TUNE.despawnVeh : kind === 'ani' ? TUNE.despawnAni : TUNE.despawnPed;
+    return d > viewR() + des && !N.render.inView(e.x, e.y, kind === 'veh' ? 80 : 40);
+  }
+
+  /* ---------------------------------------------------------------- busyness */
+  // A coarse grid (TUNE.busy.G) of how busy each spot is, for people and for traffic: the district style's level
+  // (TUNE.pedStyle / vehStyle) plus a soft bump round every market, station, junction, cinema, temple, café, bus stop,
+  // school, cart... (TUNE.busy.places) and along the main roads (TUNE.busy.roads), clamped to [min, max]; a cell is
+  // worked out the first time it is asked for. The targets follow it round the camera (Koti fuller than a Banjara
+  // lane) and the spawns keep to its busier spots (a candidate is taken with the odds busy / the busiest round him).
+  const BZ = { G: 0, gw: 0, gh: 0, ped: null, veh: null, ok: null, rp: null, rv: null, spots: null, sg: null, SG: 480 };
+  const BQ = { ped: 0, veh: 0 };
+  function busyBuild() {
+    const B = TUNE.busy, G = B.G;
+    BZ.G = G; BZ.gw = Math.ceil(N.WORLD_W / G); BZ.gh = Math.ceil(N.WORLD_H / G);
+    const n = BZ.gw * BZ.gh;
+    BZ.ped = new Float32Array(n); BZ.veh = new Float32Array(n); BZ.ok = new Uint8Array(n);
+    BZ.rp = new Float32Array(n); BZ.rv = new Float32Array(n);
+    // the main roads: the strongest road through a cell
+    for (const e of RI.edges || []) {
+      const rb = B.roads[e.kind]; if (!rb) continue;
+      const A = RI.nodes[e.a], Bn = RI.nodes[e.b], L = Math.hypot(Bn.x - A.x, Bn.y - A.y), k = Math.max(1, Math.ceil(L / (G / 3)));
+      for (let i = 0; i <= k; i++) {
+        const x = A.x + (Bn.x - A.x) * i / k, y = A.y + (Bn.y - A.y) * i / k;
+        const ci = Math.floor(x / G), cj = Math.floor(y / G);
+        if (ci < 0 || cj < 0 || ci >= BZ.gw || cj >= BZ.gh) continue;
+        const idx = cj * BZ.gw + ci;
+        if (rb[0] > BZ.rp[idx]) BZ.rp[idx] = rb[0];
+        if (rb[1] > BZ.rv[idx]) BZ.rv[idx] = rb[1];
+      }
+    }
+    // the places, bucketed for the per-cell sums
+    BZ.spots = []; BZ.sg = new Map();
+    for (const id in N.places) {
+      const pl = N.places[id], w = B.places[pl.kind];
+      if (!w || pl.level || pl.roof) continue;
+      const sp = { x: pl.x, y: pl.y, p: w[0], v: w[1], s2: 2 * (w[2] / 2) * (w[2] / 2), R: w[2] * 1.5 };
+      BZ.spots.push(sp);
+      const k = Math.floor(pl.y / BZ.SG) * 4096 + Math.floor(pl.x / BZ.SG);
+      const l = BZ.sg.get(k); if (l) l.push(sp); else BZ.sg.set(k, [sp]);
+    }
+  }
+  function busyCell(ci, cj) {
+    const idx = cj * BZ.gw + ci;
+    if (BZ.ok[idx]) return idx;
+    const B = TUNE.busy, x = (ci + 0.5) * BZ.G, y = (cj + 0.5) * BZ.G, style = styleOf(districtAt(x, y));
+    let p = (TUNE.pedStyle[style] != null ? TUNE.pedStyle[style] : 0.5) + BZ.rp[idx];
+    let v = (TUNE.vehStyle[style] != null ? TUNE.vehStyle[style] : 0.6) + BZ.rv[idx];
+    const i0 = Math.floor((x - 480) / BZ.SG), i1 = Math.floor((x + 480) / BZ.SG), j0 = Math.floor((y - 480) / BZ.SG), j1 = Math.floor((y + 480) / BZ.SG);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const l = BZ.sg.get(j * 4096 + i); if (!l) continue;
+      for (const sp of l) {
+        const dx = sp.x - x, dy = sp.y - y, d2 = dx * dx + dy * dy;
+        if (d2 > sp.R * sp.R) continue;
+        const f = Math.exp(-d2 / sp.s2);
+        p += sp.p * f; v += sp.v * f;
+      }
+    }
+    BZ.ped[idx] = clamp(p, B.min, B.max); BZ.veh[idx] = clamp(v, B.min, B.max); BZ.ok[idx] = 1;
+    return idx;
+  }
+  /** how busy (x, y) is -> {ped, veh} (a shared object: read it at once) */
+  function busyAt(x, y) {
+    if (!BZ.ped) { if (!RI.built) { BQ.ped = 0.6; BQ.veh = 0.7; return BQ; } busyBuild(); }
+    const ci = clamp(Math.floor(x / BZ.G), 0, BZ.gw - 1), cj = clamp(Math.floor(y / BZ.G), 0, BZ.gh - 1);
+    const idx = busyCell(ci, cj);
+    BQ.ped = BZ.ped[idx]; BQ.veh = BZ.veh[idx];
+    return BQ;
+  }
+  /** the odds a spawn candidate at (x, y) is taken: its busyness over the busiest round the camera */
+  function keepAt(x, y, kind) {
+    const b = busyAt(x, y), B = T.busy;
+    if (!B) return 1;
+    return clamp((kind === 'veh' ? b.veh / Math.max(0.2, B.refVeh) : b.ped / Math.max(0.2, B.refPed)), 0.3, 1);
+  }
   const S = () => N.SURF;
   function walkSurfOk(x, y, allowRoad) {
     const s = N.world.surfaceAt(x, y), SU = S();
@@ -802,7 +945,7 @@
     }
     if (tr.i >= W.length) { // ran out (dead end): stop, then despawn when nobody sees
       ctl.throttle = 0; ctl.brake = true; tr.deadT = (tr.deadT || 0) + dt;
-      if (tr.deadT > 3 && !N.render.inView(vX, vY, 60)) despawnVehicle(v);
+      if (tr.deadT > 3 && !seen(vX, vY, 60)) despawnVehicle(v);
       return;
     }
     if (tr.i > 14) { W.splice(0, tr.i - 1); tr.i = 1; }
@@ -916,7 +1059,7 @@
     }
     if (blocked) {
       tr.blockT += dt;
-      if (tr.blockT > 10 && !N.render.inView(vX, vY, 60)) { despawnVehicle(v); return; }
+      if (tr.blockT > 10 && !seen(vX, vY, 60)) { despawnVehicle(v); return; }
       if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
     } else { tr.blockT = Math.max(0, tr.blockT - dt * 2); if (tr.blockT === 0) tr.backed = false; }
@@ -944,7 +1087,7 @@
       if (moved < 2.5 && want > 15) {
         tr.stuck++;
         tr.rev = 0.8;
-        if (tr.stuck >= 3) { if (!N.render.inView(vX, vY, 60)) despawnVehicle(v); else { tr.stuck = 0; reroute(v); } }
+        if (tr.stuck >= 3) { if (!seen(vX, vY, 60)) despawnVehicle(v); else { tr.stuck = 0; reroute(v); } }
       } else tr.stuck = 0;
     }
   }
@@ -979,7 +1122,7 @@
     const n = RI.nodes && N.world.roads.nearestNode(v.x, v.y);
     if (!n) { despawnVehicle(v); return; }
     const opts = n.links.map((l) => RI.nodes[l.to]).filter((C) => edgeAllowed(v, edgeAny(n, C)));
-    if (!opts.length) { if (!N.render.inView(v.x, v.y, 60)) despawnVehicle(v); return; }
+    if (!opts.length) { if (!seen(v.x, v.y, 60)) despawnVehicle(v); return; }
     // prefer the direction we're facing
     let best = opts[0], bd = -2;
     for (const C of opts) { const d = Math.cos(Math.atan2(C.y - n.y, C.x - n.x) - v.angle); if (d > bd) { bd = d; best = C; } }
@@ -1116,9 +1259,8 @@
   /* ---------------------------------------------------------------- spawn / despawn */
   function spawnTrafficVehicle(force) {
     if (!RI.built || !N.vehicles || !N.vehicles.spawn) return null;
-    const c = camC(), vr = viewR();
-    const r0 = vr + TUNE.ringVeh[0], r1 = vr + TUNE.ringVeh[1];
-    const n = ringNode(c.x, c.y, force ? Math.max(60, vr * 0.3) : r0, r1, (q) => q.links.length > 0);
+    const c = camC(), R = ringFor('veh');
+    const n = ringNode(c.x, c.y, force && !cone3() ? Math.max(60, viewR() * 0.3) : R[0], R[1], (q) => q.links.length > 0);
     if (!n) return null;
     const link = pick(n.links);
     const B = RI.nodes[link.to], e = RI.edges[link.edge];
@@ -1133,8 +1275,8 @@
     const g = geom(n, B), off = laneOff(stub, e);
     const d0 = clamp(e.len * rr(0.25, 0.65), 10, e.len - 10);
     const pos = lanePt(n, g, d0, off);
-    if (!force && N.render.inView(pos.x, pos.y, 50)) return null;
-    if (force && N.render.inView(pos.x, pos.y, -40) && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 90) return null;
+    if (!force && (seen(pos.x, pos.y, 50) || rnd() > keepAt(pos.x, pos.y, 'veh'))) return null;
+    if (force && seen(pos.x, pos.y, -40) && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 90) return null;
     if (closedAt(pos.x, pos.y)) return null;
     if (!N.world.isDrivable(pos.x, pos.y) || N.world.collide(pos.x, pos.y, Ty.d / 2, 'drive').hit) return null;
     if (N.entities.query(pos.x, pos.y, Ty.w / 2 + 16, (q) => q.kind === 'vehicle' || q === N.player || q.kind === 'animal' || (q.kind === 'ped' && roadSurf(N.world.surfaceAt(q.x, q.y)))).length) return null;
@@ -1243,7 +1385,7 @@
     return v;
   }
   function dropPassenger(v) {
-    if (!N.render.inView(v.x, v.y, 40) || T.peds.length >= caps().ped) return;
+    if (!seen(v.x, v.y, 40) || T.peds.length >= caps().ped) return;
     const s = N.vehicles.exitSpot ? N.vehicles.exitSpot(v, 'walk') : null;
     if (!s) return;
     const ped = spawnPedAt(s.x, s.y, pickRole(v.tr.style), v.tr.style, { mode: 'walk' });
@@ -1494,7 +1636,7 @@
   }
   function stuckCheck(p, dt) {
     const sp = Math.hypot(p.vx, p.vy);
-    if (sp < 4) { p.stuckT += dt; if (p.stuckT > 3) { p.stuckT = 0; if (!N.render.inView(p.x, p.y, 30)) { p.alive = false; } else { p.w = null; p.mode = 'wander'; p.zone = { x: p.x, y: p.y, r: 24 }; p.ttl = p.life + 8; } } }
+    if (sp < 4) { p.stuckT += dt; if (p.stuckT > 3) { p.stuckT = 0; if (!seen(p.x, p.y, 30)) { p.alive = false; } else { p.w = null; p.mode = 'wander'; p.zone = { x: p.x, y: p.y, r: 24 }; p.ttl = p.life + 8; } } }
     else p.stuckT = 0;
   }
   function zonePoint(z) {
@@ -1529,7 +1671,7 @@
       const o = T.peds.find((q) => q !== p && q.zone === z && Math.hypot(q.x - p.x, q.y - p.y) < 14);
       p.faceA = o ? Math.atan2(o.y - p.y, o.x - p.x) : Math.atan2(z.y - p.y, z.x - p.x) + rr(-1, 1);
     }
-    if (p.life > p.ttl && !N.render.inView(p.x, p.y, 20)) { if (!attachNearestWalk(p)) p.ttl += 20; }
+    if (p.life > p.ttl && !seen(p.x, p.y, 20)) { if (!attachNearestWalk(p)) p.ttl += 20; }
   }
   function gotoStep(p, dt) {
     if (!p.tgt) { p.mode = p.zone ? 'wander' : 'walk'; return; }
@@ -1681,8 +1823,8 @@
   /* ---------------------------------------------------------------- spawning peds */
   function spawnWalker(force) {
     if (!RI.built) return null;
-    const c = camC(), vr = viewR();
-    const n = ringNode(c.x, c.y, force ? 40 : vr + TUNE.ringPed[0], vr + TUNE.ringPed[1]);
+    const c = camC(), R = ringFor('ped');
+    const n = ringNode(c.x, c.y, force ? 40 : R[0], R[1]);
     if (!n || !n.inc.length) return null;
     const e = RI.edges[pick(n.inc)];
     if (!e || e.kind === 'path' || e.len < 20) return null;
@@ -1691,7 +1833,7 @@
     const g = geom(a, b), side = rnd() < 0.5 ? 1 : -1, off = footOff(e, side);
     const d0 = clamp(g.L * rr(0.2, 0.8), 4, g.L - 4);
     const pos = lanePt(a, g, d0, off);
-    if (!force && N.render.inView(pos.x, pos.y, 30)) return null;
+    if (!force && (seen(pos.x, pos.y, 30) || rnd() > keepAt(pos.x, pos.y, 'ped'))) return null;
     if (force && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 30) return null;
     if (!walkSurfOk(pos.x, pos.y, true) || N.world.collide(pos.x, pos.y, 3.6, 'walk').hit) return null;
     if (respectAt(pos.x, pos.y)) return null;
@@ -1764,15 +1906,17 @@
   function spawnZonePed(z, force) {
     // out of view near the zone (walk in), or right in it after a teleport
     let pos = null;
-    if (force || !N.render.inView(z.x, z.y, z.r + 20)) pos = zonePoint(z);
-    if (!pos || (!force && N.render.inView(pos.x, pos.y, 20))) {
-      // enter from outside the view on the footpath network, heading for the zone
-      const a = rnd() * TAU, d = viewR() + 20;
-      const c = camC();
+    if (force || !seen(z.x, z.y, z.r + 20)) pos = zonePoint(z);
+    else if (cone3()) { pos = zonePoint(z); if (pos && seen(pos.x, pos.y, 12)) pos = null; } // (3D: any of it out of the camera's sight)
+    if (!pos || (!force && seen(pos.x, pos.y, 20))) {
+      // enter from out of sight on the footpath network, heading for the zone (3D: from a spot near it the camera
+      // does not see; top-down: from just off the screen)
+      const a = rnd() * TAU, C3 = cone3(), d = C3 ? rr(50, 110) : viewR() + 20;
+      const c = C3 ? z : camC();
       let ex = c.x + Math.cos(a) * d, ey = c.y + Math.sin(a) * d;
       if (Math.hypot(ex - z.x, ey - z.y) > 420) return null;
       const f = N.world.findFree(ex, ey, 'walk', 10);
-      if (!f || !walkSurfOk(f.x, f.y, false) || N.render.inView(f.x, f.y, 10)) return null;
+      if (!f || !walkSurfOk(f.x, f.y, false) || seen(f.x, f.y, 10)) return null;
       const role = wpick(z.spec.roles) || 'man';
       const p = spawnPedAt(f.x, f.y, role, styleOf(districtAt(z.x, z.y)), { mode: 'goto', zone: z });
       if (p) { p.tgt = zonePoint(z) || { x: z.x, y: z.y }; p.mode = 'goto'; }
@@ -1831,8 +1975,8 @@
       pod.green = cyc < P ? 0 : cyc < P + G ? -1 : cyc < 2 * P + G ? 1 : -1;
       const wantCop = on && near && !pochHere && !(N.wanted && N.wanted.podiumOff && N.wanted.podiumOff(pod));
       if (wantCop && !pod.cop) {
-        if (!N.render.inView(pod.x, pod.y, 20) || T.fillT > 0) { pod.cop = new Constable(pod); N.entities.add(pod.cop); T.constables.push(pod.cop); }
-      } else if (!wantCop && pod.cop && (!N.render.inView(pod.x, pod.y, 20) || !on)) {
+        if (!seen(pod.x, pod.y, 20) || T.fillT > 0) { pod.cop = new Constable(pod); N.entities.add(pod.cop); T.constables.push(pod.cop); }
+      } else if (!wantCop && pod.cop && (!seen(pod.x, pod.y, 20) || !on)) {
         N.entities.remove(pod.cop); const i = T.constables.indexOf(pod.cop); if (i >= 0) T.constables.splice(i, 1); pod.cop = null;
       }
     }
@@ -2003,7 +2147,8 @@
     let sp = null;
     for (const k of ['cow', 'dog', 'goat']) if (counts[k] < want[k]) { sp = k; break; }
     if (!sp) return null;
-    const n = ringNode(c.x, c.y, force ? 50 : vr + TUNE.ringAni[0], vr + TUNE.ringAni[1]);
+    const RA = ringFor('ani'); void vr;
+    const n = ringNode(c.x, c.y, force ? 50 : RA[0], RA[1]);
     if (!n || !n.inc.length) return null;
     const e = RI.edges[pick(n.inc)];
     if (!e || e.kind === 'path' || e.len < 40) return null;
@@ -2019,7 +2164,7 @@
       const side = rnd() < 0.5 ? 1 : -1;
       pos = lanePt(A, g, g.L * rr(0.2, 0.8), footOff(e, side) + side * 3);
     }
-    if (!force && N.render.inView(pos.x, pos.y, 40)) return null;
+    if (!force && seen(pos.x, pos.y, 40)) return null;
     if (force && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 60) return null;
     if (!N.world.isWalkable(pos.x, pos.y) || N.world.collide(pos.x, pos.y, sp === 'cow' ? 7 : 3.5, 'walk').hit) return null;
     if (respectAt(pos.x, pos.y) || N.entities.query(pos.x, pos.y, 26, (q) => q.kind === 'vehicle' || q === N.player).length) return null;
@@ -2536,7 +2681,8 @@
     if (m < 7 * 60) return 0.55;
     if (m >= 8 * 60 && m < 10 * 60) return 1.3;
     if (m >= 17 * 60 + 30 && m < 20 * 60) return 1.3;
-    if (m >= 20 * 60) return 0.5;
+    if (m >= 20 * 60 && m < 22 * 60 + 30) return 0.75;
+    if (m >= 22 * 60 + 30) return 0.4;
     return 1;
   }
   function pedTimeMul(m) {
@@ -2546,8 +2692,9 @@
     if (m < 12 * 60) return 1;
     if (m < 15 * 60 + 30) return summer() ? 0.6 : 0.85;
     if (m < 16 * 60 + 30) return 1.15;
-    if (m < 19 * 60 + 45) return 1.05;
-    if (m < 22 * 60) return 0.75;
+    if (m < 19 * 60 + 45) return 1.1;
+    if (m < 22 * 60) return 0.85;
+    if (m < 23 * 60) return 0.5;
     return 0.3;
   }
   function updateTargets() {
@@ -2558,8 +2705,17 @@
     if (N.places.charminar_plaza && Math.hypot(N.places.charminar_plaza.x - c.x, N.places.charminar_plaza.y - c.y) < 500 && (m >= 22 * 60 || m < 5 * 60)) vm *= 0.3;
     if (raining()) pm *= 0.6;
     const dens = clamp(+API.density || 0, 0, 2);
-    T.targets.veh = Math.round(clamp(cp.veh * (TUNE.vehStyle[style] || 0.6) * vm * dens, 0, cp.veh));
-    T.targets.ped = Math.round(clamp(cp.ped * (TUNE.pedStyle[style] || 0.5) * pm * dens, 0, cp.ped));
+    // the busyness over the populated area: the camera's spot and eight round it
+    const C3 = cone3(), rS = C3 ? C3.far * 0.55 : viewR() * 0.9;
+    let sp = 0, sv = 0, mp = 0, mv = 0;
+    for (let k = -1; k < 8; k++) {
+      const b = busyAt(k < 0 ? c.x : c.x + Math.cos((k * TAU) / 8) * rS, k < 0 ? c.y : c.y + Math.sin((k * TAU) / 8) * rS);
+      sp += b.ped; sv += b.veh; if (b.ped > mp) mp = b.ped; if (b.veh > mv) mv = b.veh;
+    }
+    T.busy = { ped: sp / 9, veh: sv / 9, refPed: mp, refVeh: mv };
+    const F = TUNE.busy.full;
+    T.targets.veh = Math.round(clamp((cp.veh * T.busy.veh * vm * dens) / F.veh, 0, cp.veh));
+    T.targets.ped = Math.round(clamp((cp.ped * T.busy.ped * pm * dens) / F.ped, 0, cp.ped));
     T.targets.ani = cp.ani;
     T.pedMul = clamp(pm, 0.2, 2);
     T.style = style;
@@ -2577,8 +2733,7 @@
         if (v.driver === N.player) { v.wasTraffic = true; T.abandoned.push(v); }
         continue;
       }
-      const d = Math.hypot(v.x - c.x, v.y - c.y);
-      if (d > vr + TUNE.despawnVeh && !N.render.inView(v.x, v.y, 80)) { despawnVehicle(v); }
+      if (goneFrom(v, c, 'veh')) despawnVehicle(v);
     }
     for (let i = T.boats.length - 1; i >= 0; i--) {
       const v = T.boats[i];
@@ -2597,15 +2752,13 @@
       const p = T.peds[i];
       if (!p.alive) { T.peds.splice(i, 1); continue; }
       if (p.spotter || p.hold) continue;
-      const d = Math.hypot(p.x - c.x, p.y - c.y);
-      if (d > vr + TUNE.despawnPed && !N.render.inView(p.x, p.y, 40)) { p.alive = false; N.entities.remove(p); T.peds.splice(i, 1); }
+      if (goneFrom(p, c, 'ped')) { p.alive = false; N.entities.remove(p); T.peds.splice(i, 1); }
     }
     for (let i = T.animals.length - 1; i >= 0; i--) {
       const a = T.animals[i];
       if (!a.alive) { T.animals.splice(i, 1); continue; }
       if (a.fedT > 0) continue;
-      const d = Math.hypot(a.x - c.x, a.y - c.y);
-      if (d > vr + TUNE.despawnAni && !N.render.inView(a.x, a.y, 40)) { N.entities.remove(a); T.animals.splice(i, 1); }
+      if (goneFrom(a, c, 'ani')) { N.entities.remove(a); T.animals.splice(i, 1); }
     }
   }
   function spawnBoats() {
@@ -2676,7 +2829,7 @@
       if (T.peds.some((p) => p.balloons && p.zone && p.zone.place === pl)) continue;
       const z = { place: pl, x: pl.x, y: pl.y, r: Math.max(40, pl.r || 40), spec: TUNE.zones.plaza, kind: 'park' };
       const pos = zonePoint(z);
-      if (!pos || (!force && N.render.inView(pos.x, pos.y, 20))) continue;
+      if (!pos || (!force && seen(pos.x, pos.y, 20))) continue;
       const cols = []; for (let i = 0; i < 7; i++) cols.push(pick(['#e8203a', '#f2c230', '#30a050', '#2a6ad8', '#f06aa0', '#f08a24', '#8a3ad8']));
       const p = spawnPedAt(pos.x, pos.y, 'vendor', 'colony', { mode: 'wander', zone: z, balloons: cols });
       if (p) { p.look = Object.assign({}, p.look, { prop: null }); p.spd = 20; }
@@ -2743,7 +2896,11 @@
     get constables() { return T.constables; }, get flocks() { return T.flocks; }, get boats() { return T.boats; },
     setDensity(d) { API.density = clamp(+d || 0, 0, 2); T.targetT = 0; return API.density; },
     clear(pred) { clearAll(typeof pred === 'function' ? pred : null); },
-    stats() { return { vehicles: T.vehicles.length, peds: T.peds.length, animals: T.animals.length, flocks: T.flocks.length, boats: T.boats.length, constables: T.constables.length, targets: Object.assign({}, T.targets), zones: T.zoneList.length, ms: +T.ms.toFixed(3), sprites: sprMade }; },
+    stats() { return { vehicles: T.vehicles.length, peds: T.peds.length, animals: T.animals.length, flocks: T.flocks.length, boats: T.boats.length, constables: T.constables.length, targets: Object.assign({}, T.targets), busy: T.busy ? Object.assign({}, T.busy) : null, zones: T.zoneList.length, ms: +T.ms.toFixed(3), sprites: sprMade }; },
+    /** how busy (x, y) is for people and traffic -> {ped, veh} (district style + places + main roads, TUNE.busy) */
+    busyAt(x, y) { const b = busyAt(x, y); return { ped: b.ped, veh: b.veh }; },
+    /** out of the player's sight? (top-down: off screen; 3D: outside the camera's cone or beyond the drawing range) */
+    unseen(x, y, m) { return !seen(x, y, m); },
     /** An empty ambient auto near (x, y), released from traffic control (shops.js "AUTO!"). */
     claimAuto(x, y, r) {
       let best = null, bd = r || 260;
@@ -2808,7 +2965,7 @@
   N.on('player:teleport', () => { T.fillT = TUNE.fillSecs; T.zoneT = 0; T.targetT = 0; });
   N.on('game:new', () => { T.fillT = TUNE.fillSecs; });
   N.on('save:loaded', () => { T.fillT = TUNE.fillSecs; });
-  N.on('world:built', () => { RI.built = false; lakePts = null; });
+  N.on('world:built', () => { RI.built = false; lakePts = null; BZ.ped = null; });
 
   N.addSystem({
     id: 'traffic', order: 40, runIn: ['play', 'dialogue', 'cutscene'],

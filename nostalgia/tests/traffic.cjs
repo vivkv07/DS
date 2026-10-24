@@ -720,13 +720,13 @@ async function run() {
       const times = []; let last = performance.now();
       await new Promise((res) => { let f = 0; const step = () => { const t = performance.now(); times.push(t - last); last = t; if (++f < 180) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); });
       times.sort((a, b) => a - b);
-      return { st: N.traffic.stats(), perf: N.debug.perf(), p50: +times[times.length >> 1].toFixed(1) };
+      return { st: N.traffic.stats(), cap: N.traffic.TUNE.caps.mobile, perf: N.debug.perf(), p50: +times[times.length >> 1].toFixed(1) };
     });
     await shot(M.page, 'mobile_koti');
     await M.page.evaluate(() => { N.debug.setWanted(3); });
     await gwait(M.page, 2.5);
     await shot(M.page, 'mobile_chase');
-    if (r.st.vehicles > 20 || r.st.peds > 32) fail('mobile', 'caps exceeded: ' + JSON.stringify(r.st));
+    if (r.st.vehicles > r.cap.veh || r.st.peds > r.cap.ped) fail('mobile', 'caps exceeded: ' + JSON.stringify(r.st));
     else ok('caps respected on touch: ' + r.st.vehicles + ' vehicles, ' + r.st.peds + ' peds');
     note('phone portrait Koti 18:00: CPU frame ' + r.perf.frameMs + ' ms (update ' + r.perf.updateMs + ', draw ' + r.perf.drawMs + '), rAF p50 ' + r.p50 + ' ms');
     const e2 = await M.page.evaluate(() => N.errors.map((e) => e.where + ': ' + e.msg.split('\n')[0]));
