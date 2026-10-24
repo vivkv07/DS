@@ -506,6 +506,9 @@ async function party(browser) {
     const st = await A.ev(() => N.party.last.standings.map((r) => r.nick + ':' + r.score));
     const bScore = await B.ev(() => { const r = N.party.last.standings.find((q) => q.nick === 'Pooja'); return r && r.score; });
     check(st.length === 2 && bScore != null, 'standings ' + st.join(', '));
+    // the results are final as soon as everyone has reported; each page's own ring toss result card still comes up after
+    // that (over the party results) and the autoplay closes it, like a player's "Aage chalo"
+    check(await A.until(() => !N.minigames.isOpen() && !!document.querySelector('.pt-results'), null, 30000) && await B.until(() => !N.minigames.isOpen(), null, 30000), 'the ring toss result cards closed on both pages; the party results under them on A');
     await A.gw(1); await A.shot('party_rings_results');
     await A.ev(() => N.party.closeCards && N.party.closeCards()); await B.ev(() => N.party.closeCards && N.party.closeCards());
     // ---- dashing cars together: A drives into B
@@ -524,7 +527,11 @@ async function party(browser) {
       if (key) { await A.page.keyboard.down(key); await A.gw(Math.min(0.25, Math.abs(d) * 0.3)); await A.page.keyboard.up(key); } else await A.gw(0.15);
       bumped = await A.ev(() => (N.funfair.rideState() || {}).bumps > 0);
     }
-    await A.page.keyboard.up('ArrowUp'); await B.page.keyboard.up('ArrowUp');
+    await A.page.keyboard.up('ArrowUp');
+    // A's first bump (often on a stranger's car beside it) can land within a second, before B has got going: B keeps driving
+    // until its car has had the time to cross the floor on A's page
+    await A.until((s) => { const r = N.funfair.rideState() && N.funfair.rideState().riders.find((q) => !q.me); return !!r && Math.hypot(r.x2 - s.x, r.y2 - s.y) > 3; }, bStart, 8000);
+    await B.page.keyboard.up('ArrowUp');
     const bNow = await A.ev(() => { const r = N.funfair.rideState().riders.find((q) => !q.me); return { x: r.x2, y: r.y2 }; });
     check(Math.hypot(bNow.x - bStart.x, bNow.y - bStart.y) > 3, 'B\'s car moves on A\'s page as B drives (' + Math.hypot(bNow.x - bStart.x, bNow.y - bStart.y).toFixed(1) + ' u)');
     const bumps = await A.ev(() => N.funfair.rideState().bumps) + await B.ev(() => (N.funfair.rideState() || {}).bumps || 0);
